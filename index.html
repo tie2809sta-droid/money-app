@@ -63,6 +63,18 @@ input:focus{outline:2px solid var(--accent);border-color:transparent}
 .btn.del{background:none;color:var(--red);margin-top:4px}
 .empty{text-align:center;color:var(--muted);padding:22px 0}
 .hide{display:none!important}
+.bd{display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:700;margin-left:6px;vertical-align:1px}
+.bd.ok{background:#d8f5e6;color:#0f7a4a}.bd.wait{background:#fff3c4;color:#8a6a00}.bd.warn{background:#ffe0e7;color:#c8193f}.bd.rej{background:var(--line);color:var(--muted)}
+:root[data-theme=dark] .bd.ok{background:#163a29;color:#5fe0a1}:root[data-theme=dark] .bd.wait{background:#3d3416;color:#ffd75e}:root[data-theme=dark] .bd.warn{background:#4a1a26;color:#ff8aa5}
+.tab .cnt{background:var(--red);color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-left:6px}
+.dwarn{background:var(--red)!important}
+.qr{display:flex;justify-content:center;margin:12px 0}.qr img,.qr canvas{width:220px;height:220px;image-rendering:pixelated;border-radius:12px;background:#fff;padding:10px}
+.code{font-family:monospace;font-size:22px;letter-spacing:3px;text-align:center;font-weight:700}
+video{width:100%;border-radius:14px;background:#000;margin-top:10px}
+.alert{background:#ffe0e7;color:#c8193f;border-radius:14px;padding:12px 14px;font-weight:600;margin-bottom:12px;cursor:pointer}
+:root[data-theme=dark] .alert{background:#4a1a26;color:#ff8aa5}
+.btn.sm{padding:10px;font-size:14px;margin-top:8px}
+.two{display:flex;gap:8px}.two .btn{margin-top:8px}
 .cols{display:block}
 .who{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .who b{font-size:18px}
@@ -98,10 +110,10 @@ input:focus{outline:2px solid var(--accent);border-color:transparent}
 <main>
  <div id="tabsWrap" class="hide"><div class="tabs" id="tabs"></div></div>
  <section id="pCal">
-  <div id="noTabs" class="card empty hide">Создай первую вкладку: например, имя человека, которому выдаёшь зарплату.<button class="btn" id="firstTab">+ Новая вкладка</button></div>
+  <div id="noTabs" class="card empty hide">Создай первую вкладку: обычную (например, имя человека) или общую — связавшись с человеком по QR.<button class="btn" id="firstTab">+ Новая вкладка</button></div>
   <div class="cols" id="calCols">
    <div class="sticky">
-    <div class="card" id="whoCard" style="display:none"><div class="who"><div class="ico">👤</div><div class="grow"><b id="whoName"></b><div class="muted" id="whoSum"></div></div><span class="edit" id="editTab">✎ Изменить</span></div></div>
+    <div class="alert hide" id="needAlert"></div><div class="card" id="whoCard" style="display:none"><div class="who"><div class="ico">👤</div><div class="grow"><b id="whoName"></b><div class="muted" id="whoSum"></div></div><span class="edit" id="editTab">✎ Изменить</span></div></div>
     <div class="card">
      <div class="mnav"><button class="ib" id="prev">‹</button><b id="mName"></b><button class="ib" id="next">›</button></div>
      <div class="grid" id="grid"></div>
@@ -123,6 +135,7 @@ input:focus{outline:2px solid var(--accent);border-color:transparent}
  <section id="pSet" class="hide">
   <div class="cols">
    <div class="card"><b>Тема</b><div class="seg" id="segTheme" style="margin-top:10px"><button data-v="auto">Авто</button><button data-v="light">Светлая</button><button data-v="dark">Тёмная</button></div></div>
+   <div class="card" id="acctCard"></div>
    <div class="card"><b>Резервная копия</b><div class="muted" style="margin-top:4px">Данные хранятся только на этом устройстве и сохраняются автоматически при каждом изменении (старая копия перезаписывается). Файл-копия нужен, чтобы перенести данные на другое устройство.</div>
     <div class="muted" id="autoS" style="margin-top:6px">Автосохранение включено</div>
     <button class="btn" id="exp">Сохранить копию в файл</button>
@@ -160,6 +173,29 @@ const short=n=>n>=1e6?(n/1e6).toFixed(1).replace('.0','')+'м':n>=1e3?Math.round
 const fd=s=>{const[y,m,d]=s.split('-');return d+'.'+m+'.'+y};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const TYPES={a:{n:'Аванс',d:'da',i:'💵'},z:{n:'Зарплата',d:'dz',i:'💰'},o:{n:'Другое',d:'do',i:'✨'}};
+/* ===== аккаунт и синхронизация ===== */
+const API='https://money-app-api-anton.netlify.app/api';
+D.acct=D.acct||null;D.sync=D.sync||{links:[]};
+const me=()=>D.acct&&D.acct.user;
+async function api(path,method='GET',body){
+ const r=await fetch(API+path,{method,headers:{'content-type':'application/json',...(D.acct?{authorization:'Bearer '+D.acct.token}:{})},body:body?JSON.stringify(body):undefined});
+ const j=await r.json().catch(()=>({error:'Нет связи с сервером'}));
+ if(r.status===401&&D.acct&&path!=='/login'){D.acct=null;save();render()}
+ if(!r.ok)throw new Error(j.error||'Ошибка');return j}
+const net=f=>async(...a)=>{try{return await f(...a)}catch(e){alert(navigator.onLine?e.message:'Нет интернета. Общие выплаты работают только онлайн');throw e}};
+let syncing=false;
+async function sync(){if(!D.acct||syncing)return;syncing=true;try{const j=await api('/sync');D.sync={links:j.links,at:Date.now()};D.acct.user=j.user;save();render()}catch(e){}finally{syncing=false}}
+setInterval(()=>{if(document.visibilityState==='visible')sync()},30000);
+addEventListener('focus',sync);addEventListener('online',sync);
+/* запись связи глазами текущего пользователя */
+function view(e){const my=me().id,out=e.payer===my,mine=e.by===my;
+ const myOk=out?e.okPayer:e.okPayee,theirOk=out?e.okPayee:e.okPayer;
+ let st='ok',lbl='✓ подтверждено';
+ if(e.rejected){st='rej';lbl=mine?'✕ отклонено':'✕ ты отклонил'}
+ else if(!myOk){st='warn';lbl=out?'⚠ не записано тобой':'⚠ подтверди получение'}
+ else if(!theirOk){st='wait';lbl='⏳ ждёт подтверждения'}
+ return Object.assign({},e,{dir:out?'out':'in',mine,st,lbl,need:st==='warn'})}
+const needCount=lk=>me()?lk.entries.map(view).filter(x=>x.need).length:0;
 let page='main',cur=new Date(),sel=iso(new Date()),led=D.ledgers[0]&&D.ledgers[0].id;
 cur.setDate(1);
 
@@ -183,7 +219,10 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')close();
  if(e.key==='ArrowLeft')shift(-1);if(e.key==='ArrowRight')shift(1);if(e.key==='n'||e.key==='т')$('fab').click()});
 
 /* data source */
-function L(){return D.ledgers.find(l=>l.id==led)||D.ledgers[0]}
+function L(){if(String(led).startsWith('L:')&&me()){const k=D.sync.links.find(x=>'L:'+x.id===led);if(k)return{id:led,name:k.other.name,linked:true,link:k,entries:k.entries.map(view)}}
+ if(String(led).startsWith('L:'))led=(D.ledgers[0]||{}).id||(me()&&D.sync.links[0]?'L:'+D.sync.links[0].id:undefined);
+ if(String(led).startsWith('L:'))return L();
+ return D.ledgers.find(l=>l.id==led)||D.ledgers[0]}
 function list(){return page==='main'?D.incomes:(L()?L().entries:[])}
 
 /* calendar */
@@ -196,7 +235,14 @@ function renderCal(){
  if(isLed)renderTabs();
  if(isLed&&!l)return;
  const E=list(),y=cur.getFullYear(),m=cur.getMonth();
- if(isLed){$('whoName').textContent=l.name;$('whoSum').textContent='Всего выдано: '+fmt(E.reduce((a,x)=>a+x.amount,0))+' · записей: '+E.length}
+ if(isLed){$('whoName').textContent=(l.linked?'🔗 ':'')+l.name;
+  if(l.linked){const o=E.filter(x=>x.dir==='out'&&!x.rejected).reduce((a,x)=>a+x.amount,0),i=E.filter(x=>x.dir==='in'&&!x.rejected).reduce((a,x)=>a+x.amount,0);
+   $('whoSum').textContent='@'+l.link.other.username+' · ты перевёл '+fmt(o)+' · получил '+fmt(i)}
+  else $('whoSum').textContent='Всего выдано: '+fmt(E.reduce((a,x)=>a+x.amount,0))+' · записей: '+E.length;
+  const nd=l.linked?E.filter(x=>x.need):[];
+  $('needAlert').classList.toggle('hide',!nd.length);
+  if(nd.length){$('needAlert').textContent='⚠ Требует проверки: '+nd.length+' — нажми, чтобы посмотреть';$('needAlert').onclick=()=>entryForm(nd[0])}}
+ else $('needAlert').classList.add('hide');
  $('mName').textContent=cur.toLocaleDateString('ru-RU',{month:'long',year:'numeric'});
  let h=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(w=>`<div class="wd">${w}</div>`).join('');
  const start=new Date(y,m,1),off=(start.getDay()+6)%7;start.setDate(1-off);
@@ -204,19 +250,21 @@ function renderCal(){
  for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);const s=iso(d);
   if(i>=35&&d.getMonth()!==m)break;
   const inc=E.filter(x=>x.date===s),sum=inc.reduce((a,x)=>a+x.amount,0);
-  const dots=[...new Set(inc.map(x=>x.type))].map(t=>`<i class="${TYPES[t].d}"></i>`).join('');
+  const dots=[...new Set(inc.map(x=>x.type))].map(t=>`<i class="${TYPES[t].d}"></i>`).join('')+(inc.some(x=>x.need)?'<i class="dwarn"></i>':'');
   h+=`<div class="day${d.getMonth()!==m?' o':''}${s===today?' t':''}${s===sel?' s':''}" data-d="${s}">${d.getDate()}<div class="dots">${dots}</div>${sum?`<small>${short(sum)}</small>`:''}</div>`}
  $('grid').innerHTML=h;
  $('grid').querySelectorAll('.day').forEach(el=>{el.onclick=()=>{sel=el.dataset.d;renderCal()};el.ondblclick=()=>{sel=el.dataset.d;entryForm()}});
  const pre=y+'-'+pad(m+1),mi=E.filter(x=>x.date.startsWith(pre));
- const sum=t=>mi.filter(x=>!t||x.type===t).reduce((a,x)=>a+x.amount,0);
+ const lk=isLed&&l.linked,tot2=d=>E.filter(x=>x.dir===d&&!x.rejected).reduce((a,x)=>a+x.amount,0),side=lk&&tot2('in')>tot2('out')?'in':'out';
+ const sum=t=>mi.filter(x=>(!t||x.type===t)&&!x.rejected&&(!lk||x.dir===side)).reduce((a,x)=>a+x.amount,0);
  const tot=sum(),av=sum('a'),zp=sum('z');
- $('mLbl').textContent=isLed?'Выдано за месяц':'Пришло за месяц';
+ $('mLbl').textContent=isLed?(l.linked?(side==='in'?'Получил за месяц':'Ты перевёл за месяц'):'Выдано за месяц'):'Пришло за месяц';
  $('mTotal').textContent=fmt(tot);$('mAv').textContent='Аванс: '+fmt(av);$('mZp').textContent='Зарплата: '+fmt(zp);
  $('mBar').style.width=(tot?Math.round(av/tot*100):0)+'%';
- $('yTotal').textContent='За '+y+' год: '+fmt(E.filter(x=>x.date.startsWith(y+'-')).reduce((a,x)=>a+x.amount,0));
+ $('yTotal').textContent='За '+y+' год: '+fmt(E.filter(x=>x.date.startsWith(y+'-')&&!x.rejected&&(!lk||x.dir===side)).reduce((a,x)=>a+x.amount,0));
  $('dTitle').textContent=fd(sel);
- const row=x=>`<div class="item" data-id="${x.id}"><div class="ico">${TYPES[x.type].i}</div><div class="grow"><div>${TYPES[x.type].n}</div><div class="muted">${fd(x.date)}${x.note?' · '+esc(x.note):''}</div></div><div class="amt ${isLed?'':'plus'}">${isLed?'':'+'}${fmt(x.amount)}</div></div>`;
+ const row=x=>{const lk=isLed&&l.linked,inn=!isLed||(lk&&x.dir==='in'),cls=lk?(x.dir==='in'?'plus':'minus'):(isLed?'':'plus');
+  return `<div class="item" data-id="${x.id}"><div class="ico">${lk?(x.dir==='in'?'↙️':'↗️'):TYPES[x.type].i}</div><div class="grow"><div>${TYPES[x.type].n}${lk?`<span class="bd ${x.st}">${x.lbl}</span>`:''}</div><div class="muted">${fd(x.date)}${lk?(x.dir==='in'?' · получил':' · перевёл'):''}${x.note?' · '+esc(x.note):''}</div></div><div class="amt ${cls}" style="${x.rejected?'text-decoration:line-through;opacity:.5':''}">${inn&&(lk||!isLed)?'+':(lk?'−':'')}${fmt(x.amount)}</div></div>`};
  const di=E.filter(x=>x.date===sel);
  $('dList').innerHTML=di.length?di.map(row).join(''):`<div class="empty">Пусто. Нажми «+», чтобы добавить</div>`;
  $('mList').innerHTML=mi.length?[...mi].sort((a,b)=>a.date.localeCompare(b.date)).map(row).join(''):`<div class="empty">В этом месяце записей нет</div>`;
@@ -225,10 +273,15 @@ function shift(n){cur.setMonth(cur.getMonth()+n);renderCal()}
 $('prev').onclick=()=>shift(-1);$('next').onclick=()=>shift(1);
 
 function renderTabs(){
- $('tabs').innerHTML=D.ledgers.map(l=>`<button class="tab${l.id==led?' on':''}" data-id="${l.id}">${esc(l.name)}</button>`).join('')+`<button class="tab add" id="addTab">+ Вкладка</button>`;
+ const lks=me()?D.sync.links:[];
+ $('tabs').innerHTML=D.ledgers.map(l=>`<button class="tab${l.id==led?' on':''}" data-id="${l.id}">${esc(l.name)}</button>`).join('')
+  +lks.map(k=>{const n=needCount(k);return `<button class="tab${'L:'+k.id===led?' on':''}" data-id="L:${k.id}">🔗 ${esc(k.other.name)}${n?`<span class="cnt">${n}</span>`:''}</button>`}).join('')
+  +`<button class="tab add" id="addTab">+ Вкладка</button>`;
  $('tabs').querySelectorAll('.tab[data-id]').forEach(b=>b.onclick=()=>{led=b.dataset.id;renderCal()});
  $('addTab').onclick=()=>tabForm()}
-$('editTab').onclick=()=>tabForm(L());
+$('editTab').onclick=()=>{const l=L();if(!l.linked)return tabForm(l);
+ open(`<h2>🔗 ${esc(l.name)}</h2><div class="muted">Логин: @${esc(l.link.other.username)}</div><button class="btn del" id="unl" style="margin-top:16px">Разорвать связь</button><button class="btn ghost" id="uc">Закрыть</button>`);
+ $('uc').onclick=close;$('unl').onclick=net(async()=>{if(!confirm('Разорвать связь? Все общие записи удалятся у вас обоих.'))return;await api(`/links/${l.link.id}/unlink`,'POST');led=undefined;close();await sync()})};
 $('firstTab').onclick=()=>tabForm();
 
 /* sheet */
@@ -240,6 +293,7 @@ function segInit(id){const s=$(id);s.querySelectorAll('button').forEach(b=>b.onc
 
 function entryForm(x){
  const isLed=page==='led',l=L(),E=list(),t=x?x.type:'z';
+ if(isLed&&l&&l.linked)return linkEntryForm(l,x);
  open(`<h2>${x?'Изменить':'Новая'} ${isLed?'выплата · '+esc(l.name):'запись'}</h2>
  <div class="seg" id="fT" data-v="${t}">${Object.entries(TYPES).map(([k,v])=>`<button data-v="${k}" class="${k===t?'on':''}">${v.n}</button>`).join('')}</div>
  <label>Сумма</label><input id="fA" type="number" inputmode="decimal" value="${x?x.amount:''}" placeholder="0">
@@ -252,23 +306,112 @@ function entryForm(x){
   if(x)Object.assign(x,o);else E.push(o);sel=o.date;const d=new Date(o.date);cur=new Date(d.getFullYear(),d.getMonth(),1);save();close();render()};
  if(x)$('fX').onclick=()=>{if(confirm('Удалить запись?')){E.splice(E.indexOf(x),1);save();close();render()}}}
 
-function tabForm(l){
+function linkEntryForm(l,x){
+ const nm=esc(l.name);
+ if(x&&!x.mine){ /* чужая запись: подтвердить / отклонить */
+  open(`<h2>${x.dir==='out'?'Ты перевёл':'Ты получил'} · ${nm}</h2>
+  <div class="big ${x.dir==='in'?'plus':'minus'}">${fmt(x.amount)}</div>
+  <div class="muted" style="margin-top:6px">${TYPES[x.type].n} · ${fd(x.date)}${x.note?' · '+esc(x.note):''}</div>
+  <div class="muted" style="margin-top:6px">Запись добавил(а) ${nm}. <span class="bd ${x.st}">${x.lbl}</span></div>
+  ${x.need||x.rejected?`<div class="two"><button class="btn" id="cOk">✓ Подтвердить</button>${x.rejected?'':'<button class="btn ghost" id="cNo" style="background:var(--line);color:var(--red)">✕ Отклонить</button>'}</div>`:''}
+  <button class="btn ghost" id="cClose">Закрыть</button>`);
+  $('cClose').onclick=close;
+  const act=a=>net(async()=>{await api(`/links/${l.link.id}/entries/${x.id}`,'PUT',{action:a});close();await sync()})();
+  if($('cOk'))$('cOk').onclick=()=>act('confirm');if($('cNo'))$('cNo').onclick=()=>act('reject');return}
+ const dir=x?x.dir:'out',t=x?x.type:'z';
+ open(`<h2>${x?'Изменить':'Новая'} запись · 🔗 ${nm}</h2>
+ <div class="seg" id="fDir" data-v="${dir}"><button data-v="out" class="${dir==='out'?'on':''}">Я перевёл</button><button data-v="in" class="${dir==='in'?'on':''}">Я получил</button></div>
+ <div class="seg" id="fT" data-v="${t}" style="margin-top:8px">${Object.entries(TYPES).map(([k,v])=>`<button data-v="${k}" class="${k===t?'on':''}">${v.n}</button>`).join('')}</div>
+ <label>Сумма</label><input id="fA" type="number" inputmode="decimal" value="${x?x.amount:''}" placeholder="0">
+ <label>Дата</label><input id="fD" type="date" value="${x?x.date:sel}">
+ <label>Комментарий</label><input id="fN" value="${x?esc(x.note||''):''}" placeholder="необязательно">
+ <div class="muted" style="margin-top:10px">${l.name} увидит эту запись у себя и подтвердит её.</div>
+ <button class="btn" id="fS">Сохранить</button>${x?'<button class="btn del" id="fX">Удалить</button>':''}`);
+ segInit('fDir');segInit('fT');if(x)$('fDir').querySelectorAll('button').forEach(b=>b.disabled=true);
+ $('fS').onclick=net(async()=>{const a=parseFloat($('fA').value.replace(',','.'));if(!a||!$('fD').value)return alert('Укажи сумму и дату');
+  const b={dir:$('fDir').dataset.v,type:$('fT').dataset.v,amount:a,date:$('fD').value,note:$('fN').value.trim()};
+  $('fS').disabled=true;$('fS').textContent='Сохраняю…';
+  try{x?await api(`/links/${l.link.id}/entries/${x.id}`,'PUT',b):await api(`/links/${l.link.id}/entries`,'POST',b)}finally{if($('fS')){$('fS').disabled=false;$('fS').textContent='Сохранить'}}
+  sel=b.date;const d=new Date(b.date);cur=new Date(d.getFullYear(),d.getMonth(),1);close();await sync()});
+ if(x)$('fX').onclick=net(async()=>{if(confirm('Удалить запись? Она пропадёт и у '+l.name)){await api(`/links/${l.link.id}/entries/${x.id}`,'DELETE');close();await sync()}})}
+
+/* ---- новая вкладка / связь по QR ---- */
+function newTabSheet(){
+ open(`<h2>Новая вкладка</h2>
+ <button class="btn" id="nLocal" style="margin-top:0">📒 Обычная вкладка<div style="font-size:12px;font-weight:500;opacity:.85">видишь только ты, работает офлайн</div></button>
+ <button class="btn ghost" id="nLink">🔗 Связать с человеком по QR<div style="font-size:12px;font-weight:500;opacity:.85">записи видите вы оба</div></button>`);
+ $('nLocal').onclick=()=>tabForm(null,true);$('nLink').onclick=linkSheet}
+const loadJs=src=>new Promise((ok,no)=>{if(document.querySelector(`script[src="${src}"]`))return ok();const sc=document.createElement('script');sc.src=src;sc.onload=ok;sc.onerror=()=>no(new Error('Не удалось загрузить, проверь интернет'));document.head.appendChild(sc)});
+let stream=null;function stopCam(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
+function linkSheet(){
+ if(!me())return accountSheet('Чтобы связаться с человеком, нужен аккаунт',linkSheet);
+ open(`<h2>Связать по QR</h2>
+ <div class="seg" id="qMode" data-v="show"><button data-v="show" class="on">Мой QR</button><button data-v="scan">Сканировать</button></div>
+ <div id="qBody"></div><button class="btn ghost" id="qClose">Закрыть</button>`);
+ $('qClose').onclick=()=>{stopCam();close()};
+ const s=$('qMode');s.querySelectorAll('button').forEach(b=>b.onclick=()=>{s.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));stopCam();b.dataset.v==='show'?showQR():scanQR()});
+ showQR()}
+async function showQR(){
+ $('qBody').innerHTML='<div class="empty">Создаю код…</div>';
+ try{const [{code,exp}]=await Promise.all([api('/invite','POST'),loadJs('https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js')]);
+  const url=location.origin+location.pathname+'#inv='+code,q=qrcode(0,'M');q.addData(url);q.make();
+  $('qBody').innerHTML=`<div class="qr">${q.createImgTag(6,0)}</div><div class="code">${code.match(/.{1,4}/g).join(' ')}</div>
+  <div class="muted" style="text-align:center;margin-top:8px">Пусть второй человек отсканирует этот QR в приложении (или камерой телефона). Код одноразовый, действует 10 минут.</div>`;
+  const wait=setInterval(async()=>{if(!$('qBody')||!$('sb').classList.contains('on')){clearInterval(wait);return}const n=D.sync.links.length;await sync();if(D.sync.links.length>n){clearInterval(wait);const k=D.sync.links[D.sync.links.length-1];led='L:'+k.id;close();alert('Связь с '+k.other.name+' создана!');go('led')}},4000);
+ }catch(e){$('qBody').innerHTML=`<div class="empty">${esc(e.message)}</div>`}}
+async function scanQR(){
+ $('qBody').innerHTML=`<video id="cam" playsinline muted></video><div class="muted" style="margin-top:8px">Наведи камеру на QR второго человека.</div>
+ <label>или введи код вручную</label><div class="two"><input id="mCode" placeholder="XXXX XXXX XXXX" style="text-transform:uppercase"><button class="btn sm" id="mGo" style="width:auto;margin-top:0">OK</button></div>`;
+ $('mGo').onclick=()=>doLink($('mCode').value.replace(/\s/g,''));
+ try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const v=$('cam');v.srcObject=stream;await v.play();
+  let det=null;if('BarcodeDetector' in window){try{det=new BarcodeDetector({formats:['qr_code']})}catch(e){}}
+  if(!det)await loadJs('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
+  const c=document.createElement('canvas'),g=c.getContext('2d',{willReadFrequently:true});
+  const tick=async()=>{if(!stream)return;let txt=null;
+   if(v.readyState>=2){if(det){const r=await det.detect(v).catch(()=>[]);if(r[0])txt=r[0].rawValue}
+    else{c.width=v.videoWidth;c.height=v.videoHeight;g.drawImage(v,0,0);const r=jsQR(g.getImageData(0,0,c.width,c.height).data,c.width,c.height);if(r)txt=r.data}}
+   const m=txt&&txt.match(/inv=([0-9A-F]{12})/i)||txt&&txt.match(/^([0-9A-F]{12})$/i);
+   if(m){stopCam();return doLink(m[1])}setTimeout(tick,250)};tick();
+ }catch(e){$('cam').replaceWith(Object.assign(document.createElement('div'),{className:'empty',textContent:'Камера недоступна. Введи код вручную.'}))}}
+const doLink=net(async code=>{if(!code)return;const r=await api('/link','POST',{code});await sync();led='L:'+r.linkId;stopCam();close();
+ const k=D.sync.links.find(x=>x.id===r.linkId);alert(r.existed?'Вы уже связаны':'Связь с '+(k?k.other.name:'человеком')+' создана!');go('led')});
+
+function accountSheet(msg,then){
+ open(`<h2>Аккаунт</h2>${msg?`<div class="muted" style="margin-bottom:6px">${msg}</div>`:''}
+ <div class="seg" id="aMode" data-v="login"><button data-v="login" class="on">Вход</button><button data-v="reg">Регистрация</button></div>
+ <label>Логин</label><input id="aU" autocomplete="username" placeholder="например: anton">
+ <div id="aNameW" class="hide"><label>Имя, которое увидят другие</label><input id="aN" placeholder="Антон"></div>
+ <label>Пароль</label><input id="aP" type="password" autocomplete="current-password" placeholder="минимум 6 символов">
+ <button class="btn" id="aGo">Войти</button>`);
+ segInit('aMode');$('aMode').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{const r=b.dataset.v==='reg';$('aNameW').classList.toggle('hide',!r);$('aGo').textContent=r?'Создать аккаунт':'Войти'}));
+ $('aGo').onclick=net(async()=>{const reg=$('aMode').dataset.v==='reg';
+  const j=await api(reg?'/register':'/login','POST',{username:$('aU').value,password:$('aP').value,name:reg?$('aN').value:undefined});
+  D.acct={token:j.token,user:j.user};save();close();await sync();render();if(then)then()})}
+
+function tabForm(l,local){if(!l&&!local)return newTabSheet();
  open(`<h2>${l?'Вкладка':'Новая вкладка'}</h2><label>Имя или название</label><input id="tN" value="${l?esc(l.name):''}" placeholder="Например: Иван">
  <button class="btn" id="tS">Сохранить</button>${l?'<button class="btn del" id="tX">Удалить вкладку</button>':''}`);
  $('tS').onclick=()=>{const n=$('tN').value.trim();if(!n)return;if(l)l.name=n;else{const o={id:uid(),name:n,entries:[]};D.ledgers.push(o);led=o.id}save();close();if(page!=='led')go('led');else render()};
  if(l)$('tX').onclick=()=>{if(confirm('Удалить вкладку «'+l.name+'» со всеми записями?')){D.ledgers.splice(D.ledgers.indexOf(l),1);led=D.ledgers[0]&&D.ledgers[0].id;save();close();render()}}}
 
 /* backup */
-$('exp').onclick=()=>{const b=new Blob([JSON.stringify(D,null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='money-backup-'+iso(new Date())+'.json';a.click()};
+$('exp').onclick=()=>{const b=new Blob([JSON.stringify(Object.assign({},D,{acct:null,sync:undefined}),null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='money-backup-'+iso(new Date())+'.json';a.click()};
 $('impBtn').onclick=()=>$('imp').click();
 $('imp').onchange=ev=>{const f=ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const o=JSON.parse(r.result);if(!o.incomes||!o.ledgers)throw 0;if(confirm('Заменить текущие данные копией?')){D=migrate(o);led=D.ledgers[0]&&D.ledgers[0].id;save();applyTheme();render()}}catch(e){alert('Файл не подходит')}};r.readAsText(f)};
 
 
-function render(){$('pSet').classList.toggle('hide',page!=='set');$('pCal').classList.toggle('hide',page==='set');
+function renderAcct(){const u=me();
+ $('acctCard').innerHTML=u?`<b>Аккаунт</b><div class="row" style="margin-top:8px"><div><div style="font-weight:600">${esc(u.name)}</div><div class="muted">@${esc(u.username)}</div></div><button class="ib" id="aOut" title="Выйти" style="width:auto;padding:0 12px;font-size:14px">Выйти</button></div><button class="btn ghost" id="aLink">🔗 Связать с человеком по QR</button>`
+  :`<b>Аккаунт</b><div class="muted" style="margin-top:4px">Нужен, чтобы вести общие выплаты с другими людьми. Личные данные остаются только на устройстве.</div><button class="btn" id="aIn">Войти или зарегистрироваться</button>`;
+ if(u){$('aOut').onclick=()=>{if(!confirm('Выйти из аккаунта?'))return;api('/logout','POST').catch(()=>{});D.acct=null;D.sync={links:[]};save();render()};$('aLink').onclick=linkSheet}
+ else $('aIn').onclick=()=>accountSheet()}
+function render(){renderAcct();$('pSet').classList.toggle('hide',page!=='set');$('pCal').classList.toggle('hide',page==='set');
  if(page==='set')$('tabsWrap').classList.add('hide');else renderCal()}
 (function(){let has=false;try{has=!!localStorage.getItem(K)}catch(e){}
  if(!has)idb().then(db=>{const r=db.transaction('b').objectStore('b').get('last');r.onsuccess=()=>{if(r.result){try{D=migrate(Object.assign(D,JSON.parse(r.result)));led=D.ledgers[0]&&D.ledgers[0].id;try{localStorage.setItem(K,r.result)}catch(e){}applyTheme();render()}catch(e){}}}}).catch(()=>{})})();
-applyTheme();render();
+applyTheme();render();sync();
+(function(){const m=location.hash.match(/inv=([0-9A-F]{12})/i);if(!m)return;history.replaceState(null,'',location.pathname);
+ const code=m[1];if(me())doLink(code);else accountSheet('Войди или зарегистрируйся, чтобы связаться',()=>doLink(code))})();
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
 </script>
 </body>
