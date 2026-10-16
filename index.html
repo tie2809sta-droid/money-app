@@ -80,12 +80,17 @@ nav button svg{width:22px;height:22px}nav button.on{color:var(--accent)}
 nav .fab{width:52px;height:52px;border-radius:50%;background:var(--accent);color:var(--ink);font-size:28px;line-height:1;justify-content:center;box-shadow:0 8px 24px -6px var(--accent)}
 nav .fab span.lbl{display:none}
 nav .logo{display:none}
-.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:20;display:none;align-items:flex-end;justify-content:center;backdrop-filter:blur(3px)}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40;display:none;align-items:flex-end;justify-content:center;backdrop-filter:blur(3px)}
 .sheet-bg.on{display:flex;animation:fade .2s}
 @keyframes fade{from{opacity:0}}@keyframes up{from{transform:translateY(30px);opacity:0}}
 .sheet{background:var(--surface);border:1px solid var(--line);width:100%;border-radius:26px 26px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));max-height:90vh;overflow:auto;animation:up .25s var(--ease)}
 .sheet h2{margin:0 0 14px;font:700 18px/1.2 var(--display);letter-spacing:-.02em}
 label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
+textarea{width:100%;min-height:170px;resize:vertical;padding:13px 14px;border-radius:14px;border:1px solid var(--line2);background:var(--bg);color:var(--text);font:400 15px/1.5 var(--sans)}
+textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accentSoft)}
+.prev{max-height:42vh;overflow:auto;margin-top:12px;border:1px solid var(--line);border-radius:16px;padding:4px 12px}
+.prev .item{cursor:default}.prev .bad{color:var(--red);font-size:13px;padding:8px 0;border-bottom:1px solid var(--line)}
+.prev .who2{font:700 13px var(--display);color:var(--accent);padding:10px 0 2px}
 input,select{width:100%;padding:13px 14px;border-radius:14px;border:1px solid var(--line2);background:var(--bg);color:var(--text);font-size:16px}
 input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accentSoft)}
 select{appearance:none;cursor:pointer;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 20px) 50%,calc(100% - 15px) 50%;background-size:5px 5px;background-repeat:no-repeat}
@@ -118,6 +123,16 @@ video{width:100%;border-radius:18px;background:#000;margin-top:12px}
 .chips button{border:1px solid var(--line2);background:none;color:var(--soft);border-radius:999px;padding:7px 13px;font-size:14px;font-weight:500;cursor:pointer}
 .chips button.on{background:var(--accent);border-color:var(--accent);color:var(--ink)}
 
+#lock{position:fixed;inset:0;z-index:30;background:var(--bg);overflow:auto;display:flex;align-items:center;justify-content:center;padding:24px 16px calc(24px + env(safe-area-inset-bottom))}
+#lock .box{width:100%;max-width:420px;text-align:center}
+#lock .logo{width:56px;height:56px;border-radius:18px;background:var(--accent);color:var(--ink);display:flex;align-items:center;justify-content:center;font:700 26px var(--display);margin:0 auto 18px;box-shadow:0 10px 30px -8px var(--accent)}
+#lock h1{font:700 24px/1.15 var(--display);letter-spacing:-.03em;margin:0 0 10px}
+#lock .qr img{width:240px;height:240px}
+.pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:8px;animation:pl 1.2s infinite}
+@keyframes pl{50%{opacity:.25}}
+body.locked header,body.locked main,body.locked nav{display:none}
+.urow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.urow:last-child{border:0}
+.urow .sm{padding:7px 12px;font-size:13px;margin:0;width:auto}
 /* ===== Компьютер ===== */
 @media (min-width:900px){
  nav{top:0;bottom:0;right:auto;width:232px;flex-direction:column;justify-content:flex-start;align-items:stretch;gap:4px;padding:26px 14px;border-top:0;border-right:1px solid var(--line);background:var(--surface)}
@@ -157,6 +172,7 @@ video{width:100%;border-radius:18px;background:#000;margin-top:12px}
      <div class="mnav"><button class="ib" id="prev">‹</button><b id="mName"></b><button class="ib" id="next">›</button></div>
      <div class="grid" id="grid"></div>
     </div>
+    <button class="btn ghost" id="impNotes" data-t="importBtn" style="margin:0 0 12px"></button>
    </div>
    <div>
     <div class="card">
@@ -180,6 +196,7 @@ video{width:100%;border-radius:18px;background:#000;margin-top:12px}
    </div>
    <div>
     <div class="card" id="acctCard"></div>
+    <div class="card hide" id="adminCard"></div>
     <div class="card"><b data-t="backup"></b><div class="muted" style="margin-top:6px" data-t="backupDesc"></div>
      <div class="muted" id="autoS" style="margin-top:8px"></div>
      <button class="btn" id="exp" data-t="saveFile"></button>
@@ -197,6 +214,14 @@ video{width:100%;border-radius:18px;background:#000;margin-top:12px}
  <button data-p="led"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c1.9.7 3.1 2.4 3.5 5.2"/></svg><span data-t="payouts"></span></button>
  <button data-p="set"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span data-t="settings"></span></button>
 </nav>
+<div id="lock" class="hide"><div class="box">
+ <div class="logo">₽</div><h1 data-t="lockTitle"></h1><div class="muted" data-t="lockText"></div>
+ <div class="qr" id="lockQr"></div><div class="code" id="lockCode"></div>
+ <div class="muted" style="margin-top:12px"><span class="pulse"></span><span data-t="lockWait"></span></div>
+ <button class="btn ghost" id="lockLogin" data-t="haveAcct" style="margin-top:22px"></button>
+ <button class="btn del" id="lockAdmin" data-t="iAmAdmin" style="color:var(--muted);font-size:14px"></button>
+ <div class="chips" id="lockLang" style="justify-content:center;margin-top:18px"></div>
+</div></div>
 <div class="sheet-bg" id="sb"><div class="sheet" id="sheet"></div></div>
 <script>
 const K='moneyApp_v1';
@@ -209,7 +234,7 @@ function migrate(o){o.ledgers=o.ledgers||[];o.incomes=o.incomes||[];
 try{const s=localStorage.getItem(K);if(s)D=migrate(Object.assign(D,JSON.parse(s)))}catch(e){}
 
 /* ===== язык ===== */
-const VERSION='2.0';
+const VERSION='2.2';
 const LOC={ru:'ru-RU',en:'en-GB',uz:'uz-Latn-UZ',kk:'kk-KZ',tr:'tr-TR',de:'de-DE',es:'es-ES'};
 if(D.lang&&!LANGS[D.lang])D.lang='ru';
 if(!D.lang){const n=(navigator.language||'ru').slice(0,2);D.lang=LANGS[n]?n:'ru'}
@@ -251,7 +276,7 @@ async function api(path,method='GET',body){
  if(!r.ok)throw new Error(errT(j.error||'Ошибка сервера'));return j}
 const net=f=>async(...a)=>{try{return await f(...a)}catch(e){alert(navigator.onLine?e.message:t('offline'));throw e}};
 let syncing=false;
-async function sync(){if(!D.acct||syncing)return;syncing=true;try{const j=await api('/sync');D.sync={links:j.links,at:Date.now()};D.acct.user=j.user;save();render()}catch(e){}finally{syncing=false}}
+async function sync(){if(!D.acct||syncing)return;syncing=true;try{const j=await api('/sync');D.sync={links:j.links,adminSet:j.adminSet,at:Date.now()};D.acct.user=j.user;save();render()}catch(e){}finally{syncing=false}}
 setInterval(()=>{if(document.visibilityState==='visible')sync()},30000);
 addEventListener('focus',sync);addEventListener('online',sync);
 function view(e){const my=me().id,out=e.payer===my,mine=e.by===my;
@@ -435,6 +460,16 @@ async function showQR(){
   <div class="muted" style="text-align:center;margin-top:10px">${t('qrHint')}</div>`;
   const wait=setInterval(async()=>{if(!$('qBody')||!$('sb').classList.contains('on')){clearInterval(wait);return}const n=D.sync.links.length;await sync();if(D.sync.links.length>n){clearInterval(wait);const k=D.sync.links[D.sync.links.length-1];led='L:'+k.id;close();alert(t('linked',{n:oname(k)}));go('led')}},4000);
  }catch(e){$('qBody').innerHTML=`<div class="empty">${esc(e.message)}</div>`}}
+/* общий сканер QR: вызывает cb(текст) */
+async function startScanner(v,cb){
+ stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});v.srcObject=stream;await v.play();
+ let det=null;if('BarcodeDetector' in window){try{det=new BarcodeDetector({formats:['qr_code']})}catch(e){}}
+ if(!det)await loadJs('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
+ const c=document.createElement('canvas'),g=c.getContext('2d',{willReadFrequently:true});
+ const tick=async()=>{if(!stream)return;let txt=null;
+  if(v.readyState>=2){if(det){const r=await det.detect(v).catch(()=>[]);if(r[0])txt=r[0].rawValue}
+   else{c.width=v.videoWidth;c.height=v.videoHeight;g.drawImage(v,0,0);const r=jsQR(g.getImageData(0,0,c.width,c.height).data,c.width,c.height);if(r)txt=r.data}}
+  if(txt&&cb(txt)!==false){stopCam();return}setTimeout(tick,250)};tick()}
 async function scanQR(){
  $('qBody').innerHTML=`<video id="cam" playsinline muted></video><div class="muted" style="margin-top:8px">${t('camHint')}</div>
  <label>${t('orCode')}</label><div class="two"><input id="mCode" placeholder="XXXX XXXX XXXX" style="text-transform:uppercase"><button class="btn sm" id="mGo" style="width:auto;margin-top:0">OK</button></div>`;
@@ -452,18 +487,117 @@ async function scanQR(){
 const doLink=net(async code=>{if(!code)return;const r=await api('/link','POST',{code});await sync();led='L:'+r.linkId;stopCam();close();
  const k=D.sync.links.find(x=>x.id===r.linkId);alert(r.existed?t('already'):t('linked',{n:k?oname(k):t('someone')}));go('led')});
 
+/* ===== вставка из заметок ===== */
+const MON=[['янв','jan','yan','қаң','oca','ene'],['фев','feb','fev','ақп','şub'],['мар','mar','mär','нау'],['апр','apr','сәу','nis','abr'],['мая','май','may','mai','мам'],['июн','jun','iyun','мау','haz'],['июл','jul','iyul','шіл','tem'],['авг','aug','avg','там','ağu','ago'],['сен','sep','сент','қыр','eyl'],['окт','oct','okt','қаз','eki'],['ноя','nov','noy','қар','kas'],['дек','dec','dek','dez','жел','ara','dic']];
+const monIdx=w=>{w=w.toLowerCase();for(let i=0;i<12;i++)if(MON[i].some(p=>w.startsWith(p)))return i;return -1};
+const RX_A=/[^\s\d]*(?:аванс|avans|advance|vorschuss|anticipo)[^\s\d]*/i,
+ RX_Z=/(?:^|(?<=[^а-яёa-z]))(?:з\/п|зп)(?![а-яёa-z])|[^\s\d]*(?:зарпл|оклад|получк|жалақ|salary|wage|maaş|gehalt|lohn|sueldo|salario|maosh)[^\s\d]*|ish haqi/i;
+function parseNotes(text){const now=new Date(),out=[];let person=null;
+ for(let raw of text.split(/\r?\n/)){let ln=raw.trim();if(!ln)continue;
+  if(!/\d/.test(ln)){person=ln.replace(/^[-–—•*#\s]+|[:：\-–—\s]+$/g,'')||null;continue}
+  let d=null,mo=null,y=null,rest=ln,mm;
+  if(mm=rest.match(/(?<![\d.,])(\d{1,2})[.\/-](\d{1,2})(?:[.\/-](\d{2,4}))?(?![\d])/)){d=+mm[1];mo=+mm[2]-1;y=mm[3]?+mm[3]:null;rest=rest.replace(mm[0],' ')}
+  else if(mm=rest.match(/(?<![\d])(\d{1,2})\s*([A-Za-zА-Яа-яЁёҚқӘәІіҢңҒғҮүҰұӨөҺһŞşĞğÜüÇçİıÖöÄä]{3,})\.?(?:\s+(\d{4}))?/)){const i=monIdx(mm[2]);if(i>=0){d=+mm[1];mo=i;y=mm[3]?+mm[3]:null;rest=rest.replace(mm[0],' ')}}
+  if(y!==null&&y<100)y+=2000;
+  if(d===null||mo<0||mo>11||d<1||d>31){out.push({bad:raw,person});continue}
+  if(y===null){y=now.getFullYear();if(new Date(y,mo,d)-now>31*864e5)y--}
+  let best=0,bestStr='';const nums=rest.matchAll(/(\d{1,3}(?:[ .\u00a0]\d{3})+|\d+)(?:,(\d{1,2}))?\s*(тыс\.?|к|k|т)?(?![\d])/gi);
+  for(const n of nums){let v=parseFloat(n[1].replace(/[ .\u00a0]/g,'')+(n[2]?'.'+n[2]:''));if(n[3])v*=1000;if(v>best){best=v;bestStr=n[0]}}
+  if(!(best>0)){out.push({bad:raw,person});continue}
+  rest=rest.replace(bestStr,' ');
+  const type=RX_A.test(ln)?'a':RX_Z.test(ln)?'z':'o';
+  const note=rest.replace(RX_A,' ').replace(RX_Z,' ').replace(/₽|(?<![а-яё])(?:руб|р|тг|сум)\.?(?![а-яё])|rub|so[ʻ']?m|₸/gi,' ').replace(/[-–—:;,|•*]+/g,' ').replace(/\s+/g,' ').trim();
+  out.push({date:y+'-'+pad(mo+1)+'-'+pad(d),amount:Math.round(best*100)/100,type,note,person})}
+ return out}
+function importSheet(){
+ open(`<h2>${t('importT')}</h2><div class="muted">${t('importD')}</div>
+ <textarea id="imTxt" style="margin-top:12px" placeholder="${esc(t('importPh'))}"></textarea>
+ <div class="two"><button class="btn ghost" id="imClip">${t('pasteClip')}</button><button class="btn" id="imGo">${t('parseBtn')}</button></div>
+ <div id="imPrev"></div><button class="btn ghost" id="imX">${t('close')}</button>`);
+ $('imX').onclick=close;
+ $('imClip').onclick=async()=>{try{$('imTxt').value=await navigator.clipboard.readText()}catch(e){$('imTxt').focus()}};
+ $('imGo').onclick=()=>{const rows=parseNotes($('imTxt').value),ok=rows.filter(r=>!r.bad),isLed=page==='led';
+  if(!ok.length){$('imPrev').innerHTML=`<div class="empty">${t('nothingFound')}</div>`;return}
+  let h='',lastP;for(const r of rows){if(isLed&&r.person!==lastP&&r.person){h+=`<div class="who2">👤 ${esc(r.person)}</div>`;lastP=r.person}
+   h+=r.bad?`<div class="bad">✕ ${esc(r.bad)} — ${t('notParsed')}</div>`:`<div class="item"><div class="ico">${TYPES[r.type].i}</div><div class="grow"><div>${tn(r.type)}</div><div class="muted">${fd(r.date)}${r.note?' · '+esc(r.note):''}</div></div><div class="amt plus">${fmt(r.amount)}</div></div>`}
+  $('imPrev').innerHTML=`<div class="prev">${h}</div><button class="btn" id="imAdd">${t('importAdd',{n:ok.length})}</button>`;
+  $('imAdd').onclick=net(async()=>{$('imAdd').disabled=true;let n=0;
+   if(!isLed){ok.forEach(r=>{D.incomes.push({id:uid(),type:r.type,amount:r.amount,date:r.date,note:r.note});n++})}
+   else{const cur0=L();
+    for(const r of ok){let tab=null;
+     if(r.person){const nm=r.person.toLowerCase();const lk=me()&&D.sync.links.find(k=>oname(k).toLowerCase()===nm);
+      if(lk){await api(`/links/${lk.id}/entries`,'POST',{dir:'out',type:r.type,amount:r.amount,date:r.date,note:r.note});n++;continue}
+      tab=D.ledgers.find(l=>l.name.toLowerCase()===nm);if(!tab){tab={id:uid(),name:r.person,entries:[]};D.ledgers.push(tab)}}
+     else if(cur0&&cur0.linked){await api(`/links/${cur0.link.id}/entries`,'POST',{dir:'out',type:r.type,amount:r.amount,date:r.date,note:r.note});n++;continue}
+     else{tab=cur0||D.ledgers[0];if(!tab){tab={id:uid(),name:t('tab'),entries:[]};D.ledgers.push(tab)}}
+     tab.entries.push({id:uid(),type:r.type,amount:r.amount,date:r.date,note:r.note});n++;led=led||tab.id}}
+   const last=ok[ok.length-1].date;sel=last;const dd=new Date(last);cur=new Date(dd.getFullYear(),dd.getMonth(),1);
+   save();close();await sync();render();alert(t('importDone',{n}))})}}
+$('impNotes').onclick=importSheet;
+
+/* ===== администратор ===== */
+function adminScan(){
+ open(`<h2>${t('addUser')}</h2><video id="cam" playsinline muted></video><div class="muted" style="margin-top:8px">${t('addUserScan')}</div>
+ <label>${t('orCode')}</label><div class="two"><input id="jCode" placeholder="XXXX XXXX XXXX" style="text-transform:uppercase"><button class="btn sm" id="jGo" style="width:auto;margin-top:0">OK</button></div>
+ <button class="btn ghost" id="jClose">${t('close')}</button>`);
+ $('jClose').onclick=()=>{stopCam();close()};
+ $('jGo').onclick=()=>{const c=$('jCode').value.replace(/\s/g,'').toUpperCase();if(/^[0-9A-F]{12}$/.test(c)){stopCam();newUserForm(c)}};
+ startScanner($('cam'),txt=>{const m=txt.match(/join=([0-9A-F]{12})/i)||txt.match(/^([0-9A-F]{12})$/i);if(!m)return false;newUserForm(m[1].toUpperCase())})
+  .catch(()=>{const v=$('cam');if(v)v.replaceWith(Object.assign(document.createElement('div'),{className:'empty',textContent:t('camNo')}))})}
+function newUserForm(code){stopCam();
+ open(`<h2>${t('newUserT')}</h2><div class="muted">${code.match(/.{1,4}/g).join(' ')}</div>
+ <label>${t('shownName')}</label><input id="nN" placeholder="${t('namePh')}">
+ <label>${t('loginLbl')}</label><input id="nU" autocapitalize="none" placeholder="${t('loginPh')}">
+ <label>${t('password')}</label><input id="nP" type="text" autocomplete="off" placeholder="${t('pwPh')}">
+ <button class="btn" id="nGo">${t('createUser')}</button><button class="btn ghost" id="nX">${t('close')}</button>`);
+ $('nX').onclick=close;
+ $('nGo').onclick=net(async()=>{$('nGo').disabled=true;try{const j=await api('/admin/approve','POST',{code,username:$('nU').value,name:$('nN').value,password:$('nP').value});
+  close();alert(t('userAdded',{n:j.user.name}));await sync()}finally{if($('nGo'))$('nGo').disabled=false}})}
+async function renderUsers(){const box=$('usersBox');if(!box)return;
+ try{const {users}=await api('/admin/users');
+  box.innerHTML=users.filter(u=>u.id!==me().id).map(u=>`<div class="urow"><div class="grow"><div style="font-weight:600">${esc(u.name)}</div><div class="muted">@${esc(u.username)}${u.disabled?' · '+t('blockedW'):''}</div></div>
+   <button class="btn ${u.disabled?'':'ghost'} sm" data-u="${esc(u.username)}" data-d="${u.disabled?0:1}" data-n="${esc(u.name)}">${t(u.disabled?'unblock':'block')}</button></div>`).join('')||`<div class="empty">—</div>`;
+  box.querySelectorAll('button[data-u]').forEach(b=>b.onclick=net(async()=>{const dis=b.dataset.d==='1';if(dis&&!confirm(t('blockQ',{n:b.dataset.n})))return;
+   await api('/admin/users/'+encodeURIComponent(b.dataset.u),'POST',{disabled:dis});renderUsers()}))}catch(e){box.innerHTML=''}}
+
+/* ===== экран блокировки ===== */
+let joinPoll=null;
+async function showLock(){document.body.classList.add('locked');$('lock').classList.remove('hide');
+ $('lockLang').innerHTML=Object.keys(LANGS).map(k=>`<button data-v="${k}" class="${k===D.lang?'on':''}">${LANGS[k]._name}</button>`).join('');
+ $('lockLang').querySelectorAll('button').forEach(b=>b.onclick=()=>{D.lang=b.dataset.v;save();applyLang();showLock()});
+ if(joinPoll)return;
+ try{if(!D.join||D.join.exp<Date.now()+60000){const j=await api('/join/start','POST');D.join={code:j.code,secret:j.secret,exp:Date.now()+14*60000};save()}
+  await loadJs('https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js');
+  const q=qrcode(0,'M');q.addData(location.origin+location.pathname+'#join='+D.join.code);q.make();
+  $('lockQr').innerHTML=q.createImgTag(6,0);$('lockCode').textContent=D.join.code.match(/.{1,4}/g).join(' ');
+  joinPoll=setInterval(async()=>{if(me()){clearInterval(joinPoll);joinPoll=null;return}
+   if(D.join.exp<Date.now()){clearInterval(joinPoll);joinPoll=null;D.join=null;return showLock()}
+   try{const r=await api('/join/status','POST',{code:D.join.code,secret:D.join.secret});
+    if(r.status==='gone'){clearInterval(joinPoll);joinPoll=null;D.join=null;showLock()}
+    if(r.status==='done'){clearInterval(joinPoll);joinPoll=null;D.join=null;D.acct={token:r.token,user:r.user};save();hideLock();await sync();render();
+     alert(t('welcome',{n:r.user.name}));showKey(r.recovery)}}catch(e){}},3000);
+ }catch(e){$('lockQr').innerHTML=`<div class="empty">${esc(e.message)}</div>`;setTimeout(showLock,8000)}}
+function hideLock(){document.body.classList.remove('locked');$('lock').classList.add('hide')}
+$('lockLogin').onclick=()=>accountSheet();
+$('lockAdmin').onclick=()=>{
+ open(`<h2>${t('iAmAdmin')}</h2><div class="muted">${t('setupD')}</div>
+ <label>${t('adminClaim')}</label><input id="sC" style="text-transform:uppercase" placeholder="XXXX-XXXX-XXXX">
+ <label>${t('loginLbl')}</label><input id="sU" autocapitalize="none" autocomplete="username" placeholder="${t('loginPh')}">
+ <label>${t('shownName')}</label><input id="sN" placeholder="${t('namePh2')}">
+ <label>${t('password')}</label><input id="sP" type="password" autocomplete="current-password" placeholder="${t('pwPh')}">
+ <button class="btn" id="sGo">${t('activate')}</button>`);
+ $('sGo').onclick=net(async()=>{const j=await api('/admin/setup','POST',{code:$('sC').value,username:$('sU').value,name:$('sN').value,password:$('sP').value});
+  D.acct={token:j.token,user:j.user};save();close();await sync();go('set');if(j.recovery)showKey(j.recovery)})};
+
 function accountSheet(msg,then){
  open(`<h2>${t('account')}</h2>${msg?`<div class="muted" style="margin-bottom:10px">${msg}</div>`:''}
- <div class="seg" id="aMode" data-v="login"><button data-v="login" class="on">${t('signIn')}</button><button data-v="reg">${t('signUp')}</button></div>
- <label>${t('loginLbl')}</label><input id="aU" autocomplete="username" autocapitalize="none" placeholder="${t('loginPh')}">
- <div id="aNameW" class="hide"><label>${t('shownName')}</label><input id="aN" placeholder="${t('namePh2')}"></div>
+  <label>${t('loginLbl')}</label><input id="aU" autocomplete="username" autocapitalize="none" placeholder="${t('loginPh')}">
  <label>${t('password')}</label><input id="aP" type="password" autocomplete="current-password" placeholder="${t('pwPh')}">
  <button class="btn" id="aGo">${t('doLogin')}</button>
  <button class="btn del" id="aForgot" style="color:var(--accent)">${t('forgot')}</button>`);
  $('aForgot').onclick=()=>recoverSheet(then);
- segInit('aMode');$('aMode').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{const r=b.dataset.v==='reg';$('aNameW').classList.toggle('hide',!r);$('aGo').textContent=t(r?'doReg':'doLogin')}));
- $('aGo').onclick=net(async()=>{const reg=$('aMode').dataset.v==='reg';
-  const j=await api(reg?'/register':'/login','POST',{username:$('aU').value,password:$('aP').value,name:reg?$('aN').value:undefined});
+ $('aGo').onclick=net(async()=>{
+  const j=await api('/login','POST',{username:$('aU').value,password:$('aP').value});
   D.acct={token:j.token,user:j.user};save();close();await sync();render();
   if(j.recovery)showKey(j.recovery,then);else if(then)then()})}
 function showKey(key,then){
@@ -505,14 +639,22 @@ function renderSettings(){
  if(u){$('aOut').onclick=()=>{if(!confirm(t('logoutQ')))return;api('/logout','POST').catch(()=>{});D.acct=null;D.sync={links:[]};save();render()};$('aLink').onclick=linkSheet;
   $('aKey').onclick=net(async()=>{if(!confirm(t('recNewQ')))return;const j=await api('/recovery','POST');showKey(j.recovery)})}
  else $('aIn').onclick=()=>accountSheet();
+ const ac=$('adminCard');
+ if(u&&u.admin){ac.classList.remove('hide');ac.innerHTML=`<b>${t('adminCard')}</b><div class="muted" style="margin-top:6px">${t('youAdmin')}</div><button class="btn" id="adAdd">${t('addUser')}</button><div class="ttl" style="margin-top:18px;display:block">${t('users')}</div><div id="usersBox"></div>`;
+  $('adAdd').onclick=adminScan;renderUsers()}
+ else if(u&&D.sync.adminSet===false){ac.classList.remove('hide');ac.innerHTML=`<b>${t('adminClaim')}</b><div class="muted" style="margin-top:6px">${t('adminClaimD')}</div><input id="adCode" style="margin-top:10px;text-transform:uppercase" placeholder="XXXX-XXXX-XXXX"><button class="btn" id="adGo">${t('activate')}</button>`;
+  $('adGo').onclick=net(async()=>{await api('/admin/claim','POST',{code:$('adCode').value});await sync();render()})}
+ else ac.classList.add('hide');
  showSaved()}
-function render(){$('ttl').textContent=t(TT[page]);
+function render(){if(!me()){showLock();return}hideLock();$('ttl').textContent=t(TT[page]);
  $('pSet').classList.toggle('hide',page!=='set');$('pCal').classList.toggle('hide',page==='set');
  if(page==='set'){$('tabsWrap').classList.add('hide');renderSettings()}else renderCal()}
 
 (function(){let has=false;try{has=!!localStorage.getItem(K)}catch(e){}
  if(!has)idb().then(db=>{const r=db.transaction('b').objectStore('b').get('last');r.onsuccess=()=>{if(r.result){try{D=migrate(Object.assign(D,JSON.parse(r.result)));led=D.ledgers[0]&&D.ledgers[0].id;try{localStorage.setItem(K,r.result)}catch(e){}applyTheme();applyLang();render()}catch(e){}}}}).catch(()=>{})})();
 applyTheme();applyLang();render();sync();
+(function(){const m=location.hash.match(/join=([0-9A-F]{12})/i);if(!m)return;history.replaceState(null,'',location.pathname);
+ if(me()&&me().admin)newUserForm(m[1].toUpperCase())})();
 (function(){const m=location.hash.match(/inv=([0-9A-F]{12})/i);if(!m)return;history.replaceState(null,'',location.pathname);
  const code=m[1];if(me())doLink(code);else accountSheet(t('loginToLink'),()=>doLink(code))})();
 if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
