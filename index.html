@@ -105,6 +105,9 @@ select{appearance:none;cursor:pointer;background-image:linear-gradient(45deg,tra
 .btn .sub{display:block;font-size:12px;font-weight:500;opacity:.75;margin-top:2px}
 .empty{text-align:center;color:var(--muted);padding:22px 0}
 .hide{display:none!important}
+#toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:var(--raised);color:var(--text);border:1px solid var(--line2);border-radius:999px;padding:11px 20px;font-weight:600;font-size:14px;z-index:60;opacity:0;pointer-events:none;transition:all .25s var(--ease);box-shadow:0 10px 30px -10px rgba(0,0,0,.5);max-width:calc(100% - 32px);text-align:center}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+@media (min-width:900px){#toast{bottom:28px;left:calc(50% + 116px)}}
 .cols{display:block}
 .who{display:flex;align-items:center;gap:12px}
 .who b{font:700 17px var(--display);letter-spacing:-.02em}
@@ -196,6 +199,7 @@ body.locked header,body.locked main,body.locked nav{display:none}
    </div>
    <div>
     <div class="card" id="acctCard"></div>
+    <div class="card"><b data-t="notifT"></b><div class="muted" style="margin-top:6px" data-t="notifD"></div><div id="notifBox"></div></div>
     <div class="card hide" id="adminCard"></div>
     <div class="card"><b data-t="excelT"></b><div class="muted" style="margin-top:6px" data-t="excelD"></div>
      <button class="btn" id="xlsxOut" data-t="exportXlsx"></button>
@@ -234,6 +238,7 @@ body.locked header,body.locked main,body.locked nav{display:none}
  </div>
  <div class="chips" id="lockLang" style="justify-content:center;margin-top:18px"></div>
 </div></div>
+<div id="toast"></div>
 <div class="sheet-bg" id="sb"><div class="sheet" id="sheet"></div></div>
 <script>
 const K='moneyApp_v1';
@@ -246,7 +251,7 @@ function migrate(o){o.ledgers=o.ledgers||[];o.incomes=o.incomes||[];
 try{const s=localStorage.getItem(K);if(s)D=migrate(Object.assign(D,JSON.parse(s)))}catch(e){}
 
 /* ===== язык ===== */
-const VERSION='2.4';
+const VERSION='2.5';
 const LOC={ru:'ru-RU',en:'en-GB',uz:'uz-Latn-UZ',kk:'kk-KZ',tr:'tr-TR',de:'de-DE',es:'es-ES'};
 if(D.lang&&!LANGS[D.lang])D.lang='ru';
 if(!D.lang){const n=(navigator.language||'ru').slice(0,2);D.lang=LANGS[n]?n:'ru'}
@@ -288,7 +293,14 @@ async function api(path,method='GET',body){
  if(!r.ok)throw new Error(errT(j.error||'Ошибка сервера'));return j}
 const net=f=>async(...a)=>{try{return await f(...a)}catch(e){alert(navigator.onLine?e.message:t('offline'));throw e}};
 let syncing=false;
-async function sync(){if(!D.acct||syncing)return;syncing=true;try{const j=await api('/sync');D.sync={links:j.links,adminSet:j.adminSet,at:Date.now()};D.acct.user=j.user;save();render()}catch(e){}finally{syncing=false}}
+let toastT;function toast(m){const el=$('toast');el.textContent=m;el.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('on'),3200)}
+async function sync(){if(!D.acct||syncing)return;syncing=true;try{const j=await api('/sync');
+ /* новые/изменённые записи от других людей → всплывающее сообщение */
+ const seen=D.seen||{},first=!D.seen,news={};
+ j.links.forEach(k=>k.entries.forEach(e=>{if((e.ub||e.by)!==j.user.id&&seen[e.id]!==e.updated){if(!first)news[k.other.name]=(news[k.other.name]||0)+1}seen[e.id]=e.updated}));
+ D.seen=seen;
+ D.sync={links:j.links,adminSet:j.adminSet,at:Date.now()};D.acct.user=j.user;save();render();
+ const ks=Object.keys(news);if(ks.length)toast(ks.map(n=>t('newFrom',{n,k:news[n]})).join(' · '))}catch(e){}finally{syncing=false}}
 setInterval(()=>{if(document.visibilityState==='visible')sync()},30000);
 addEventListener('focus',sync);addEventListener('online',sync);
 function view(e){const my=me().id,out=e.payer===my,mine=e.by===my;
@@ -298,7 +310,7 @@ function view(e){const my=me().id,out=e.payer===my,mine=e.by===my;
  else if(!myOk){st='warn';lk=out?'stNotRec':'stConfirmGet'}
  else if(!theirOk){st='wait';lk='stWait'}
  return Object.assign({},e,{dir:out?'out':'in',mine,st,lk,need:st==='warn'})}
-const needCount=k=>me()?k.entries.map(view).filter(x=>x.need).length:0;
+const needCount=k=>me()?k.entries.map(view).filter(x=>x.need&&x.dir==='out').length:0;
 const oname=k=>k.other.id?k.other.name:t('deleted');
 let page='main',cur=new Date(),sel=iso(new Date()),led=D.ledgers[0]&&D.ledgers[0].id;
 cur.setDate(1);
@@ -324,11 +336,16 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){stopCam();close()}
  if(e.key==='ArrowLeft')shift(-1);if(e.key==='ArrowRight')shift(1);if(e.key==='n')$('fab').click()});
 
 /* ===== данные ===== */
-function L(){if(String(led).startsWith('L:')&&me()){const k=D.sync.links.find(x=>'L:'+x.id===led);if(k)return{id:led,name:oname(k),linked:true,link:k,entries:k.entries.map(view)}}
- if(String(led).startsWith('L:'))led=(D.ledgers[0]||{}).id||(me()&&D.sync.links[0]?'L:'+D.sync.links[0].id:undefined);
+function L(){if(String(led).startsWith('L:')&&me()){const k=D.sync.links.filter(showLinkTab).find(x=>'L:'+x.id===led);if(k)return{id:led,name:oname(k),linked:true,link:k,entries:k.entries.map(view).filter(x=>x.dir==='out')}}
+ if(String(led).startsWith('L:')){const f=me()&&D.sync.links.filter(showLinkTab)[0];led=(D.ledgers[0]||{}).id||(f?'L:'+f.id:undefined)}
  if(String(led).startsWith('L:'))return L();
- return D.ledgers.find(l=>l.id==led)||D.ledgers[0]}
-function list(){return page==='main'?D.incomes:(L()?L().entries:[])}
+ const loc=D.ledgers.find(l=>l.id==led)||D.ledgers[0];if(loc)return loc;
+ const f=me()&&D.sync.links.filter(showLinkTab)[0];if(f){led='L:'+f.id;return L()}}
+/* «Зарплата» = личные записи + всё, что тебе перевели связанные люди */
+function incomeList(){const a=D.incomes.slice();if(me())D.sync.links.forEach(k=>k.entries.map(view).filter(x=>x.dir==='in').forEach(x=>a.push(Object.assign(x,{lkRef:k,from:oname(k)}))));return a}
+function list(){return page==='main'?incomeList():(L()?L().entries:[])}
+/* вкладка связи видна в «Выплатах», только если ты этому человеку платишь (или пока пусто) */
+const showLinkTab=k=>{const v=me()?k.entries.map(view):[];if(v.some(x=>x.dir==='out'))return true;if(v.some(x=>x.dir==='in'))return false;return !(k.other.admin&&!me().admin)};
 
 /* ===== календарь ===== */
 /* узбекские названия (в браузерах их часто нет) */
@@ -350,10 +367,9 @@ function renderCal(){
   if(l.linked){const o=E.filter(x=>x.dir==='out'&&!x.rejected).reduce((a,x)=>a+x.amount,0),i=E.filter(x=>x.dir==='in'&&!x.rejected).reduce((a,x)=>a+x.amount,0);
    $('whoSum').textContent=t('linkSum',{u:l.link.other.username,o:fmt(o),i:fmt(i)})}
   else $('whoSum').textContent=t('totalGiven',{v:fmt(E.reduce((a,x)=>a+x.amount,0)),n:E.length});
-  const nd=l.linked?E.filter(x=>x.need):[];
-  $('needAlert').classList.toggle('hide',!nd.length);
+}
+ {const nd=E.filter(x=>x.need);$('needAlert').classList.toggle('hide',!nd.length);
   if(nd.length){$('needAlert').textContent=t('needAlert',{n:nd.length});$('needAlert').onclick=()=>entryForm(nd[0])}}
- else $('needAlert').classList.add('hide');
  $('mName').textContent=monthTitle(cur);
  let h=weekdays().map(w=>`<div class="wd">${w}</div>`).join('');
  const start=new Date(y,m,1),off=(start.getDay()+6)%7;start.setDate(1-off);
@@ -374,8 +390,8 @@ function renderCal(){
  $('mBar').style.width=(tot?Math.round(av/tot*100):0)+'%';
  $('yTotal').textContent=t('forYear',{y,v:fmt(E.filter(x=>x.date.startsWith(y+'-')&&!x.rejected&&(!lk||x.dir===side)).reduce((a,x)=>a+x.amount,0))});
  $('dTitle').textContent=dayTitle(sel);
- const row=x=>{const inn=!isLed||(lk&&x.dir==='in'),cls=lk?(x.dir==='in'?'plus':'minus'):(isLed?'':'plus');
-  return `<div class="item" data-id="${x.id}"><div class="ico">${lk?(x.dir==='in'?'↙':'↗'):TYPES[x.type].i}</div><div class="grow"><div>${tn(x.type)}${lk?`<span class="bd ${x.st}">${t(x.lk)}</span>`:''}</div><div class="muted">${fd(x.date)}${lk?' · '+t(x.dir==='in'?'gotW':'sentW'):''}${x.note?' · '+esc(x.note):''}</div></div><div class="amt ${cls}" style="${x.rejected?'text-decoration:line-through;opacity:.5':''}">${inn&&(lk||!isLed)?'+':(lk?'−':'')}${fmt(x.amount)}</div></div>`};
+ const row=x=>{const sh=lk||!!x.lkRef,inn=!isLed||(lk&&x.dir==='in'),cls=lk?(x.dir==='in'?'plus':'minus'):(isLed?'':'plus');
+  return `<div class="item" data-id="${x.id}"><div class="ico">${sh?(x.dir==='in'?'↙':'↗'):TYPES[x.type].i}</div><div class="grow"><div>${tn(x.type)}${sh?`<span class="bd ${x.st}">${t(x.lk)}</span>`:''}</div><div class="muted">${fd(x.date)}${x.lkRef?' · '+esc(t('fromLbl',{n:x.from})):lk?' · '+t(x.dir==='in'?'gotW':'sentW'):''}${x.note?' · '+esc(x.note):''}</div></div><div class="amt ${cls}" style="${x.rejected?'text-decoration:line-through;opacity:.5':''}">${inn&&(lk||!isLed)?'+':(lk?'−':'')}${fmt(x.amount)}</div></div>`};
  const di=E.filter(x=>x.date===sel);
  $('dList').innerHTML=di.length?di.map(row).join(''):`<div class="empty">${t('emptyDay')}</div>`;
  $('mList').innerHTML=mi.length?[...mi].sort((a,b)=>a.date.localeCompare(b.date)).map(row).join(''):`<div class="empty">${t('emptyMonth')}</div>`;
@@ -384,7 +400,7 @@ function shift(n){cur.setMonth(cur.getMonth()+n);renderCal()}
 $('prev').onclick=()=>shift(-1);$('next').onclick=()=>shift(1);
 
 function renderTabs(){
- const lks=me()?D.sync.links:[];
+ const lks=me()?D.sync.links.filter(showLinkTab):[];
  $('tabs').innerHTML=D.ledgers.map(l=>`<button class="tab${l.id==led?' on':''}" data-id="${l.id}">${esc(l.name)}</button>`).join('')
   +lks.map(k=>{const n=needCount(k);return `<button class="tab${'L:'+k.id===led?' on':''}" data-id="L:${k.id}">🔗 ${esc(oname(k))}${n?`<span class="cnt">${n}</span>`:''}</button>`}).join('')
   +`<button class="tab add" id="addTab">${t('addTab')}</button>`;
@@ -412,15 +428,21 @@ function amountInput(){const el=$('fA');if(!el)return;el.addEventListener('input
  const n=+i;if(D.sepFrom&&n>=D.sepFrom)i=i.replace(/\B(?=(\d{3})+(?!\d))/g,'.');el.value=i+(f!==null?','+f:'')})}
 const amountVal=()=>parseFloat(($('fA').value||'').replace(/\./g,'').replace(',','.'));
 function entryForm(x){
- const isLed=page==='led',l=L(),E=list(),ty=x?x.type:'z';
+ const isLed=page==='led',l=L(),E=isLed?list():D.incomes,ty=x?x.type:'z';
+ if(x&&x.lkRef)return linkEntryForm({name:x.from,linked:true,link:x.lkRef},x);
  if(isLed&&l&&l.linked)return linkEntryForm(l,x);
- open(`<h2>${t(x?'editRec':'newRec')}${isLed?' · '+esc(l.name):''}</h2>${typeSeg(ty)}${fields(x)}
+ const lks=!isLed&&!x&&me()?D.sync.links.filter(k=>k.other.id):[];
+ open(`<h2>${t(x?'editRec':'newRec')}${isLed?' · '+esc(l.name):''}</h2>
+ ${lks.length?`<label style="margin-top:0">${t('fromWho')}</label><select id="fFrom"><option value="">${t('myself')}</option>${lks.map(k=>`<option value="${k.id}">🔗 ${esc(oname(k))}</option>`).join('')}</select><div style="height:10px"></div>`:''}
+ ${typeSeg(ty)}${fields(x)}
  <button class="btn" id="fS">${t('save')}</button>${x?`<button class="btn del" id="fX">${t('del')}</button>`:''}`);
  segInit('fT');amountInput();
  $('fS').onclick=()=>{const a=amountVal();if(!a||!$('fD').value)return alert(t('needAmountDate'));
   const o={id:x?x.id:uid(),type:$('fT').dataset.v,amount:a,date:$('fD').value,note:$('fN').value.trim()};
-  if(x)Object.assign(x,o);else E.push(o);sel=o.date;const d=new Date(o.date);cur=new Date(d.getFullYear(),d.getMonth(),1);save();close();render()};
- if(x)$('fX').onclick=()=>{if(confirm(t('delRecQ'))){E.splice(E.indexOf(x),1);save();close();render()}}}
+  const fr=$('fFrom')&&$('fFrom').value;
+  if(fr)return net(async()=>{await api(`/links/${fr}/entries`,'POST',{dir:'in',type:o.type,amount:o.amount,date:o.date,note:o.note});sel=o.date;const d=new Date(o.date);cur=new Date(d.getFullYear(),d.getMonth(),1);close();toast(t('tSaved'));await sync()})();
+  if(x)Object.assign(x,o);else E.push(o);sel=o.date;const d=new Date(o.date);cur=new Date(d.getFullYear(),d.getMonth(),1);save();close();render();toast(t('tSaved'))};
+ if(x)$('fX').onclick=()=>{if(confirm(t('delRecQ'))){E.splice(E.indexOf(x),1);save();close();render();toast(t('tDeleted'))}}}
 
 function linkEntryForm(l,x){
  const nm=esc(l.name);
@@ -432,12 +454,12 @@ function linkEntryForm(l,x){
   ${x.need||x.rejected?`<div class="two"><button class="btn" id="cOk">${t('confirm')}</button>${x.rejected?'':`<button class="btn ghost" id="cNo" style="color:var(--red)">${t('reject')}</button>`}</div>`:''}
   <button class="btn ghost" id="cClose">${t('close')}</button>`);
   $('cClose').onclick=close;
-  const act=a=>net(async()=>{await api(`/links/${l.link.id}/entries/${x.id}`,'PUT',{action:a});close();await sync()})();
+  const act=a=>net(async()=>{await api(`/links/${l.link.id}/entries/${x.id}`,'PUT',{action:a});close();toast(t(a==='confirm'?'tConfirmed':'tRejected'));await sync()})();
   if($('cOk'))$('cOk').onclick=()=>act('confirm');if($('cNo'))$('cNo').onclick=()=>act('reject');return}
  const dir=x?x.dir:'out',ty=x?x.type:'z';
  open(`<h2>${t(x?'editRec':'newRec')} · 🔗 ${nm}</h2>
- <div class="seg" id="fDir" data-v="${dir}"><button data-v="out" class="${dir==='out'?'on':''}">${t('iSent')}</button><button data-v="in" class="${dir==='in'?'on':''}">${t('iGot')}</button></div>
- <div style="margin-top:8px">${typeSeg(ty)}</div>${fields(x)}
+ <div class="seg hide" id="fDir" data-v="${dir}"><button data-v="out" class="${dir==='out'?'on':''}">${t('iSent')}</button><button data-v="in" class="${dir==='in'?'on':''}">${t('iGot')}</button></div>
+ <div class="muted" style="margin-bottom:10px">${t(dir==='in'?'iGot':'iSent')}</div>${typeSeg(ty)}${fields(x)}
  <div class="muted" style="margin-top:12px">${t('willSee',{n:nm})}</div>
  <button class="btn" id="fS">${t('save')}</button>${x?`<button class="btn del" id="fX">${t('del')}</button>`:''}`);
  segInit('fDir');segInit('fT');amountInput();if(x)$('fDir').querySelectorAll('button').forEach(b=>b.disabled=true);
@@ -445,8 +467,8 @@ function linkEntryForm(l,x){
   const b={dir:$('fDir').dataset.v,type:$('fT').dataset.v,amount:a,date:$('fD').value,note:$('fN').value.trim()};
   $('fS').disabled=true;$('fS').textContent=t('saving');
   try{x?await api(`/links/${l.link.id}/entries/${x.id}`,'PUT',b):await api(`/links/${l.link.id}/entries`,'POST',b)}finally{if($('fS')){$('fS').disabled=false;$('fS').textContent=t('save')}}
-  sel=b.date;const d=new Date(b.date);cur=new Date(d.getFullYear(),d.getMonth(),1);close();await sync()});
- if(x)$('fX').onclick=net(async()=>{if(confirm(t('delRecSharedQ',{n:l.name}))){await api(`/links/${l.link.id}/entries/${x.id}`,'DELETE');close();await sync()}})}
+  sel=b.date;const d=new Date(b.date);cur=new Date(d.getFullYear(),d.getMonth(),1);close();toast(t('tSaved'));await sync()});
+ if(x)$('fX').onclick=net(async()=>{if(confirm(t('delRecSharedQ',{n:l.name}))){await api(`/links/${l.link.id}/entries/${x.id}`,'DELETE');close();toast(t('tDeleted'));await sync()}})}
 
 /* ===== новая вкладка / QR ===== */
 function newTabSheet(){
@@ -724,10 +746,34 @@ $('xlsxFile').onchange=net(async ev=>{const f=ev.target.files[0];ev.target.value
  if(!n)return alert(t('xlsxNone'));
  save();render();alert(t('xlsxDone',{n}))});
 
+/* ===== push-уведомления ===== */
+const pushOk=()=>'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+const b64u=s=>{const p='='.repeat((4-s.length%4)%4),b=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...b].map(c=>c.charCodeAt(0)))};
+async function pushSub(){const r=await navigator.serviceWorker.ready;return r.pushManager.getSubscription()}
+const enablePush=net(async()=>{if(!pushOk())return alert(t('notifUnsupported'));
+ const perm=await Notification.requestPermission();if(perm!=='granted'){renderNotif();return alert(t('notifBlocked'))}
+ const {key}=await api('/push/key');const r=await navigator.serviceWorker.ready;
+ let sub=await r.pushManager.getSubscription();if(!sub)sub=await r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(key)});
+ await api('/push/subscribe','POST',{sub:sub.toJSON(),lang:D.lang});D.pushOn=true;save();renderNotif();toast(t('notifEnabled'))});
+const disablePush=net(async()=>{const sub=await pushSub();if(sub){await api('/push/unsubscribe','POST',{endpoint:sub.endpoint}).catch(()=>{});await sub.unsubscribe()}D.pushOn=false;save();renderNotif()});
+async function renderNotif(){const box=$('notifBox');if(!box)return;
+ if(!pushOk()){box.innerHTML=`<div class="muted" style="margin-top:10px">${t('notifUnsupported')}</div>`;return}
+ const sub=await pushSub().catch(()=>null),perm=Notification.permission;
+ if(sub&&perm==='granted'){box.innerHTML=`<div style="margin-top:10px;color:var(--green);font-weight:600">${t('notifEnabled')}</div><div class="two"><button class="btn ghost" id="nTest">${t('notifTest')}</button><button class="btn ghost" id="nOff">${t('notifOff')}</button></div>`;
+  $('nTest').onclick=net(async()=>{await api('/push/subscribe','POST',{sub:sub.toJSON(),lang:D.lang});await api('/push/test','POST')});$('nOff').onclick=disablePush}
+ else{box.innerHTML=(perm==='denied'?`<div class="muted" style="margin-top:10px;color:var(--red)">${t('notifBlocked')}</div>`:'')+`<button class="btn" id="nOn">${t('notifOn')}</button>`;$('nOn').onclick=enablePush}}
+/* один раз после входа предложить включить */
+function askPushOnce(){if(!me()||D.notifAsked||!pushOk()||Notification.permission!=='default')return;D.notifAsked=true;save();
+ setTimeout(()=>{if($('sb').classList.contains('on'))return;open(`<h2>🔔 ${t('notifT')}</h2><div class="muted">${t('notifAsk')}</div><button class="btn" id="paY">${t('notifOn')}</button><button class="btn ghost" id="paN">${t('later')}</button>`);
+  $('paY').onclick=()=>{close();enablePush()};$('paN').onclick=close},1500)}
+/* при смене языка — обновить язык уведомлений */
+async function pushLang(){try{const sub=await pushSub();if(sub&&me())api('/push/subscribe','POST',{sub:sub.toJSON(),lang:D.lang})}catch(e){}}
+
 /* ===== настройки ===== */
 function renderSettings(){
  $('langChips').innerHTML=Object.keys(LANGS).map(k=>`<button data-v="${k}" class="${k===D.lang?'on':''}">${LANGS[k]._name}</button>`).join('');
- $('langChips').querySelectorAll('button').forEach(b=>b.onclick=()=>{D.lang=b.dataset.v;save();applyLang();render()});
+ $('langChips').querySelectorAll('button').forEach(b=>b.onclick=()=>{D.lang=b.dataset.v;save();applyLang();render();pushLang()});
+ renderNotif();
  $('sepChips').innerHTML=SEP_OPTS.map(k=>`<button data-v="${k}" class="${k===D.sepFrom?'on':''}">${k?grpForce(k):t('never')}</button>`).join('');
  $('sepChips').querySelectorAll('button').forEach(b=>b.onclick=()=>{D.sepFrom=+b.dataset.v;save();render()});
  $('sepEx').textContent=t('example',{x:fmt(1250000)+' · '+fmt(25000)+' · '+fmt(3500)});
@@ -744,7 +790,7 @@ function renderSettings(){
   $('adGo').onclick=net(async()=>{await api('/admin/claim','POST',{code:$('adCode').value});await sync();render()})}
  else ac.classList.add('hide');
  showSaved()}
-function render(){if(!me()){showLock();return}hideLock();$('ttl').textContent=t(TT[page]);
+function render(){if(!me()){showLock();return}hideLock();askPushOnce();$('ttl').textContent=t(TT[page]);
  $('pSet').classList.toggle('hide',page!=='set');$('pCal').classList.toggle('hide',page==='set');
  if(page==='set'){$('tabsWrap').classList.add('hide');renderSettings()}else renderCal()}
 
@@ -755,7 +801,7 @@ applyTheme();applyLang();render();sync();
  if(me()&&me().admin)adminJoin(m[1].toUpperCase())})();
 (function(){const m=location.hash.match(/inv=([0-9A-F]{12})/i);if(!m)return;history.replaceState(null,'',location.pathname);
  const code=m[1];if(me())doLink(code);else accountSheet(t('loginToLink'),()=>doLink(code))})();
-if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker' in navigator){navigator.serviceWorker.addEventListener('message',e=>{if(e.data==='sync')sync()});navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  let rl=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!rl&&navigator.serviceWorker.controller){rl=true;location.reload()}})}
 </script>
 </body>
