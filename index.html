@@ -176,7 +176,7 @@ video{width:100%;border-radius:18px;background:#000;margin-top:12px}
    <div>
     <div class="card"><b data-t="lang"></b><div class="chips" id="langChips"></div></div>
     <div class="card"><b data-t="theme"></b><div class="seg" id="segTheme" style="margin-top:12px"><button data-v="auto" data-t="auto"></button><button data-v="light" data-t="light"></button><button data-v="dark" data-t="dark"></button></div></div>
-    <div class="card"><b data-t="currency"></b><div class="chips" id="curChips"></div></div>
+    <div class="card"><b data-t="sepTitle"></b><div class="muted" style="margin-top:6px" data-t="sepFrom"></div><div class="chips" id="sepChips"></div><div class="muted" style="margin-top:10px" id="sepEx"></div></div>
    </div>
    <div>
     <div class="card" id="acctCard"></div>
@@ -185,6 +185,7 @@ video{width:100%;border-radius:18px;background:#000;margin-top:12px}
      <button class="btn" id="exp" data-t="saveFile"></button>
      <button class="btn ghost" id="impBtn" data-t="restore"></button><input type="file" id="imp" accept=".json" class="hide">
     </div>
+    <div class="muted" id="verLbl" style="text-align:center;margin:4px 0 16px"></div>
    </div>
   </div>
  </section>
@@ -208,18 +209,21 @@ function migrate(o){o.ledgers=o.ledgers||[];o.incomes=o.incomes||[];
 try{const s=localStorage.getItem(K);if(s)D=migrate(Object.assign(D,JSON.parse(s)))}catch(e){}
 
 /* ===== язык ===== */
-const LOC={ru:'ru-RU',en:'en-GB',uz:'uz-Latn-UZ',kk:'kk-KZ',uk:'uk-UA',tr:'tr-TR',de:'de-DE',es:'es-ES'};
+const VERSION='2.0';
+const LOC={ru:'ru-RU',en:'en-GB',uz:'uz-Latn-UZ',kk:'kk-KZ',tr:'tr-TR',de:'de-DE',es:'es-ES'};
+if(D.lang&&!LANGS[D.lang])D.lang='ru';
 if(!D.lang){const n=(navigator.language||'ru').slice(0,2);D.lang=LANGS[n]?n:'ru'}
 const t=(k,p)=>{let s=(LANGS[D.lang]||LANGS.ru)[k];if(s==null)s=LANGS.ru[k]||k;if(p)for(const x in p)s=s.split('{'+x+'}').join(p[x]);return s};
 const loc=()=>LOC[D.lang]||'ru-RU';
 function applyLang(){document.documentElement.lang=D.lang;document.title=t('appName');
  document.querySelectorAll('[data-t]').forEach(el=>el.textContent=t(el.dataset.t))}
-/* ===== валюта ===== */
-const CUR=['₽','$','€','сум','₸','₴','₺','Br'];
-if(!D.cur)D.cur=D.lang==='uz'?'сум':D.lang==='kk'?'₸':D.lang==='uk'?'₴':D.lang==='tr'?'₺':D.lang==='de'||D.lang==='es'?'€':D.lang==='en'?'$':'₽';
-const curLabel=k=>k==='сум'?(D.lang==='uz'?"soʻm":['en','tr','de','es'].includes(D.lang)?'sum':'сум'):k;
-const curTxt=()=>curLabel(D.cur);
-
+/* ===== суммы: только рубли, точки между тысячами ===== */
+if(D.sepFrom==null)D.sepFrom=1000;
+const SEP_OPTS=[1000,10000,100000,0];
+const grpForce=n=>String(n).replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+function grp(n){const neg=n<0;n=Math.abs(Math.round(n*100)/100);let [i,f]=n.toFixed(2).split('.');
+ if(D.sepFrom&&n>=D.sepFrom)i=i.replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+ return (neg?'−':'')+i+(f!=='00'?','+f:'')}
 const idb=()=>new Promise((ok,no)=>{const r=indexedDB.open('moneyBackup',1);r.onupgradeneeded=()=>r.result.createObjectStore('b');r.onsuccess=()=>ok(r.result);r.onerror=no});
 const mirror=j=>idb().then(db=>{db.transaction('b','readwrite').objectStore('b').put(j,'last')}).catch(()=>{});
 const save=()=>{const j=JSON.stringify(D);try{localStorage.setItem(K,j)}catch(e){}mirror(j);D._saved=Date.now();showSaved()};
@@ -228,8 +232,8 @@ if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
 const uid=()=>Date.now()+Math.floor(Math.random()*1000);
 const pad=n=>String(n).padStart(2,'0');
 const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
-const fmt=n=>(Math.round(n*100)/100).toLocaleString(loc())+' '+curTxt();
-const short=n=>new Intl.NumberFormat(loc(),{notation:'compact',maximumFractionDigits:1}).format(n);
+const fmt=n=>grp(n)+' ₽';
+const short=n=>n>=1e6?grp(Math.round(n/1e5)/10).replace(',0','')+'M':n>=1e4?grp(Math.round(n/1e3))+'K':grp(n);
 const fd=s=>{const[y,m,d]=s.split('-');return D.lang==='en'?d+'/'+m+'/'+y:d+'.'+m+'.'+y};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const TYPES={a:{k:'adv',d:'da',i:'💵'},z:{k:'sal',d:'dz',i:'💰'},o:{k:'other',d:'do',i:'✨'}};
@@ -361,17 +365,22 @@ function close(){$('sb').classList.remove('on')}
 $('sb').onclick=e=>{if(e.target===$('sb')){stopCam();close()}};
 function segInit(id){const s=$(id);s.querySelectorAll('button').forEach(b=>b.onclick=()=>{s.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));s.dataset.v=b.dataset.v})}
 const typeSeg=(cur,extra='')=>`<div class="seg" id="fT" data-v="${cur}" ${extra}>${Object.keys(TYPES).map(k=>`<button data-v="${k}" class="${k===cur?'on':''}">${tn(k)}</button>`).join('')}</div>`;
-const fields=x=>`<label>${t('amount')}, ${esc(curTxt())}</label><input id="fA" type="number" inputmode="decimal" value="${x?x.amount:''}" placeholder="0">
+const fields=x=>`<label>${t('amount')}, ₽</label><input id="fA" type="text" inputmode="decimal" autocomplete="off" value="${x?grp(x.amount):''}" placeholder="0">
  <label>${t('date')}</label><input id="fD" type="date" value="${x?x.date:sel}">
  <label>${t('comment')}</label><input id="fN" value="${x?esc(x.note||''):''}" placeholder="${t('optional')}">`;
 
+/* автоточки при вводе: точка — разделитель тысяч, запятая — копейки */
+function amountInput(){const el=$('fA');if(!el)return;el.addEventListener('input',()=>{let v=el.value.replace(/[^\d,]/g,'');const c=v.indexOf(',');
+ let i=c<0?v:v.slice(0,c),f=c<0?null:v.slice(c+1).replace(/,/g,'').slice(0,2);i=i.replace(/^0+(?=\d)/,'');
+ const n=+i;if(D.sepFrom&&n>=D.sepFrom)i=i.replace(/\B(?=(\d{3})+(?!\d))/g,'.');el.value=i+(f!==null?','+f:'')})}
+const amountVal=()=>parseFloat(($('fA').value||'').replace(/\./g,'').replace(',','.'));
 function entryForm(x){
  const isLed=page==='led',l=L(),E=list(),ty=x?x.type:'z';
  if(isLed&&l&&l.linked)return linkEntryForm(l,x);
  open(`<h2>${t(x?'editRec':'newRec')}${isLed?' · '+esc(l.name):''}</h2>${typeSeg(ty)}${fields(x)}
  <button class="btn" id="fS">${t('save')}</button>${x?`<button class="btn del" id="fX">${t('del')}</button>`:''}`);
- segInit('fT');
- $('fS').onclick=()=>{const a=parseFloat($('fA').value.replace(',','.'));if(!a||!$('fD').value)return alert(t('needAmountDate'));
+ segInit('fT');amountInput();
+ $('fS').onclick=()=>{const a=amountVal();if(!a||!$('fD').value)return alert(t('needAmountDate'));
   const o={id:x?x.id:uid(),type:$('fT').dataset.v,amount:a,date:$('fD').value,note:$('fN').value.trim()};
   if(x)Object.assign(x,o);else E.push(o);sel=o.date;const d=new Date(o.date);cur=new Date(d.getFullYear(),d.getMonth(),1);save();close();render()};
  if(x)$('fX').onclick=()=>{if(confirm(t('delRecQ'))){E.splice(E.indexOf(x),1);save();close();render()}}}
@@ -394,8 +403,8 @@ function linkEntryForm(l,x){
  <div style="margin-top:8px">${typeSeg(ty)}</div>${fields(x)}
  <div class="muted" style="margin-top:12px">${t('willSee',{n:nm})}</div>
  <button class="btn" id="fS">${t('save')}</button>${x?`<button class="btn del" id="fX">${t('del')}</button>`:''}`);
- segInit('fDir');segInit('fT');if(x)$('fDir').querySelectorAll('button').forEach(b=>b.disabled=true);
- $('fS').onclick=net(async()=>{const a=parseFloat($('fA').value.replace(',','.'));if(!a||!$('fD').value)return alert(t('needAmountDate'));
+ segInit('fDir');segInit('fT');amountInput();if(x)$('fDir').querySelectorAll('button').forEach(b=>b.disabled=true);
+ $('fS').onclick=net(async()=>{const a=amountVal();if(!a||!$('fD').value)return alert(t('needAmountDate'));
   const b={dir:$('fDir').dataset.v,type:$('fT').dataset.v,amount:a,date:$('fD').value,note:$('fN').value.trim()};
   $('fS').disabled=true;$('fS').textContent=t('saving');
   try{x?await api(`/links/${l.link.id}/entries/${x.id}`,'PUT',b):await api(`/links/${l.link.id}/entries`,'POST',b)}finally{if($('fS')){$('fS').disabled=false;$('fS').textContent=t('save')}}
@@ -449,11 +458,27 @@ function accountSheet(msg,then){
  <label>${t('loginLbl')}</label><input id="aU" autocomplete="username" autocapitalize="none" placeholder="${t('loginPh')}">
  <div id="aNameW" class="hide"><label>${t('shownName')}</label><input id="aN" placeholder="${t('namePh2')}"></div>
  <label>${t('password')}</label><input id="aP" type="password" autocomplete="current-password" placeholder="${t('pwPh')}">
- <button class="btn" id="aGo">${t('doLogin')}</button>`);
+ <button class="btn" id="aGo">${t('doLogin')}</button>
+ <button class="btn del" id="aForgot" style="color:var(--accent)">${t('forgot')}</button>`);
+ $('aForgot').onclick=()=>recoverSheet(then);
  segInit('aMode');$('aMode').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{const r=b.dataset.v==='reg';$('aNameW').classList.toggle('hide',!r);$('aGo').textContent=t(r?'doReg':'doLogin')}));
  $('aGo').onclick=net(async()=>{const reg=$('aMode').dataset.v==='reg';
   const j=await api(reg?'/register':'/login','POST',{username:$('aU').value,password:$('aP').value,name:reg?$('aN').value:undefined});
-  D.acct={token:j.token,user:j.user};save();close();await sync();render();if(then)then()})}
+  D.acct={token:j.token,user:j.user};save();close();await sync();render();
+  if(j.recovery)showKey(j.recovery,then);else if(then)then()})}
+function showKey(key,then){
+ open(`<h2>${t('recShowT')}</h2><div class="muted">${t('recShowD')}</div>
+ <div class="code" style="margin:18px 0 6px;user-select:all">${key}</div>
+ <button class="btn ghost" id="kCopy">${t('copy')}</button><button class="btn" id="kOk">${t('savedIt')}</button>`);
+ $('kCopy').onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(key);$('kCopy').textContent=t('copied')};
+ $('kOk').onclick=()=>{close();if(then)then()}}
+function recoverSheet(then){
+ open(`<h2>${t('recTitle')}</h2>
+ <label>${t('recKey')}</label><input id="rK" autocapitalize="characters" placeholder="XXXX-XXXX-XXXX-XXXX" style="text-transform:uppercase">
+ <label>${t('newPw')}</label><input id="rP" type="password" autocomplete="new-password" placeholder="${t('pwPh')}">
+ <button class="btn" id="rGo">${t('recDo')}</button>`);
+ $('rGo').onclick=net(async()=>{const j=await api('/recover','POST',{key:$('rK').value,password:$('rP').value});
+  D.acct={token:j.token,user:j.user};save();await sync();render();alert(t('recDone',{u:j.user.username}));showKey(j.recovery,then)})}
 
 function tabForm(l,local){if(!l&&!local)return newTabSheet();
  open(`<h2>${t(l?'tab':'newTab')}</h2><label>${t('nameLbl')}</label><input id="tN" value="${l?esc(l.name):''}" placeholder="${t('namePh')}">
@@ -470,12 +495,15 @@ $('imp').onchange=ev=>{const f=ev.target.files[0];if(!f)return;const r=new FileR
 function renderSettings(){
  $('langChips').innerHTML=Object.keys(LANGS).map(k=>`<button data-v="${k}" class="${k===D.lang?'on':''}">${LANGS[k]._name}</button>`).join('');
  $('langChips').querySelectorAll('button').forEach(b=>b.onclick=()=>{D.lang=b.dataset.v;save();applyLang();render()});
- $('curChips').innerHTML=CUR.map(k=>`<button data-v="${k}" class="${k===D.cur?'on':''}">${curLabel(k)}</button>`).join('');
- $('curChips').querySelectorAll('button').forEach(b=>b.onclick=()=>{D.cur=b.dataset.v;save();render()});
+ $('sepChips').innerHTML=SEP_OPTS.map(k=>`<button data-v="${k}" class="${k===D.sepFrom?'on':''}">${k?grpForce(k):t('never')}</button>`).join('');
+ $('sepChips').querySelectorAll('button').forEach(b=>b.onclick=()=>{D.sepFrom=+b.dataset.v;save();render()});
+ $('sepEx').textContent=t('example',{x:fmt(1250000)+' · '+fmt(25000)+' · '+fmt(3500)});
+ $('verLbl').textContent=t('version',{v:VERSION});
  const u=me();
- $('acctCard').innerHTML=u?`<b>${t('account')}</b><div class="row" style="margin-top:10px"><div class="who"><div class="ico">👤</div><div><div style="font-weight:600">${esc(u.name)}</div><div class="muted">@${esc(u.username)}</div></div></div><button class="ib" id="aOut" style="width:auto;padding:0 14px;font-size:14px">${t('logout')}</button></div><button class="btn ghost" id="aLink">${t('linkTab')}</button>`
+ $('acctCard').innerHTML=u?`<b>${t('account')}</b><div class="row" style="margin-top:10px"><div class="who"><div class="ico">👤</div><div><div style="font-weight:600">${esc(u.name)}</div><div class="muted">@${esc(u.username)}</div></div></div><button class="ib" id="aOut" style="width:auto;padding:0 14px;font-size:14px">${t('logout')}</button></div><button class="btn ghost" id="aLink">${t('linkTab')}</button><button class="btn ghost" id="aKey">${t('recNew')}</button>`
   :`<b>${t('account')}</b><div class="muted" style="margin-top:6px">${t('acctDesc')}</div><button class="btn" id="aIn">${t('signBtn')}</button>`;
- if(u){$('aOut').onclick=()=>{if(!confirm(t('logoutQ')))return;api('/logout','POST').catch(()=>{});D.acct=null;D.sync={links:[]};save();render()};$('aLink').onclick=linkSheet}
+ if(u){$('aOut').onclick=()=>{if(!confirm(t('logoutQ')))return;api('/logout','POST').catch(()=>{});D.acct=null;D.sync={links:[]};save();render()};$('aLink').onclick=linkSheet;
+  $('aKey').onclick=net(async()=>{if(!confirm(t('recNewQ')))return;const j=await api('/recovery','POST');showKey(j.recovery)})}
  else $('aIn').onclick=()=>accountSheet();
  showSaved()}
 function render(){$('ttl').textContent=t(TT[page]);
@@ -487,7 +515,8 @@ function render(){$('ttl').textContent=t(TT[page]);
 applyTheme();applyLang();render();sync();
 (function(){const m=location.hash.match(/inv=([0-9A-F]{12})/i);if(!m)return;history.replaceState(null,'',location.pathname);
  const code=m[1];if(me())doLink(code);else accountSheet(t('loginToLink'),()=>doLink(code))})();
-if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+ let rl=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!rl&&navigator.serviceWorker.controller){rl=true;location.reload()}})}
 </script>
 </body>
 </html>
