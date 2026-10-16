@@ -197,6 +197,10 @@ body.locked header,body.locked main,body.locked nav{display:none}
    <div>
     <div class="card" id="acctCard"></div>
     <div class="card hide" id="adminCard"></div>
+    <div class="card"><b data-t="excelT"></b><div class="muted" style="margin-top:6px" data-t="excelD"></div>
+     <button class="btn" id="xlsxOut" data-t="exportXlsx"></button>
+     <button class="btn ghost" id="xlsxIn" data-t="importXlsx"></button><input type="file" id="xlsxFile" accept=".xlsx,.xls,.csv,.ods" class="hide">
+    </div>
     <div class="card"><b data-t="backup"></b><div class="muted" style="margin-top:6px" data-t="backupDesc"></div>
      <div class="muted" id="autoS" style="margin-top:8px"></div>
      <button class="btn" id="exp" data-t="saveFile"></button>
@@ -242,7 +246,7 @@ function migrate(o){o.ledgers=o.ledgers||[];o.incomes=o.incomes||[];
 try{const s=localStorage.getItem(K);if(s)D=migrate(Object.assign(D,JSON.parse(s)))}catch(e){}
 
 /* ===== язык ===== */
-const VERSION='2.3';
+const VERSION='2.4';
 const LOC={ru:'ru-RU',en:'en-GB',uz:'uz-Latn-UZ',kk:'kk-KZ',tr:'tr-TR',de:'de-DE',es:'es-ES'};
 if(D.lang&&!LANGS[D.lang])D.lang='ru';
 if(!D.lang){const n=(navigator.language||'ru').slice(0,2);D.lang=LANGS[n]?n:'ru'}
@@ -504,7 +508,8 @@ function parseNotes(text){const now=new Date(),out=[];let person=null;
  for(let raw of text.split(/\r?\n/)){let ln=raw.trim();if(!ln)continue;
   if(!/\d/.test(ln)){person=ln.replace(/^[-–—•*#\s]+|[:：\-–—\s]+$/g,'')||null;continue}
   let d=null,mo=null,y=null,rest=ln,mm;
-  if(mm=rest.match(/(?<![\d.,])(\d{1,2})[.\/-](\d{1,2})(?:[.\/-](\d{2,4}))?(?![\d])/)){d=+mm[1];mo=+mm[2]-1;y=mm[3]?+mm[3]:null;rest=rest.replace(mm[0],' ')}
+  if(mm=rest.match(/(?<![\d])(20\d\d)-(\d{1,2})-(\d{1,2})(?![\d])/)){y=+mm[1];mo=+mm[2]-1;d=+mm[3];rest=rest.replace(mm[0],' ')}
+  else if(mm=rest.match(/(?<![\d.,])(\d{1,2})[.\/-](\d{1,2})(?:[.\/-](\d{2,4}))?(?![\d])/)){d=+mm[1];mo=+mm[2]-1;y=mm[3]?+mm[3]:null;rest=rest.replace(mm[0],' ')}
   else if((mm=rest.match(/(?<![\d])(\d{1,2})\s*([A-Za-zА-Яа-яЁёҚқӘәІіҢңҒғҮүҰұӨөҺһŞşĞğÜüÇçİıÖöÄä]{3,})\.?(?:\s+(\d{4}))?/))&&monIdx(mm[2])>=0){d=+mm[1];mo=monIdx(mm[2]);y=mm[3]?+mm[3]:null;rest=rest.replace(mm[0],' ')}
   else{const words=[...rest.matchAll(/[A-Za-zА-Яа-яЁёҚқӘәІіҢңҒғҮүҰұӨөҺһŞşĞğÜüÇçİıÖöÄä]{3,}/g)].filter(w=>monIdx(w[0])>=0&&w[0].length<=9);
    if(words.length){const w=words[0];mo=monIdx(w[0]);d=1;rest=rest.replace(w[0],' ');
@@ -515,13 +520,16 @@ function parseNotes(text){const now=new Date(),out=[];let person=null;
   if(y!==null&&y<100)y+=2000;
   if(d===null||mo<0||mo>11||d<1||d>31){out.push({bad:raw,person});continue}
   if(y===null){y=now.getFullYear();if(new Date(y,mo,d)-now>31*864e5)y--}
-  let best=0,bestStr='';const nums=rest.matchAll(/(\d{1,3}(?:[ .\u00a0]\s?\d{3})+|\d+)(?:,(\d{1,2}))?\s*(тыс\.?|к|k|т)?(?![\d])/gi);
-  for(const n of nums){let v=parseFloat(n[1].replace(/[\s.\u00a0]/g,'')+(n[2]?'.'+n[2]:''));if(n[3])v*=1000;if(v>best){best=v;bestStr=n[0]}}
-  if(!(best>0)){out.push({bad:raw,person});continue}
-  rest=rest.replace(bestStr,' ');
-  const type=RX_A.test(ln)?'a':RX_Z.test(ln)?'z':'o';
-  const note=rest.replace(/числа|число|-?го\b/gi,' ').replace(RX_A,' ').replace(RX_Z,' ').replace(/₽|(?<![а-яё])(?:руб|р|тг|сум)\.?(?![а-яё])|rub|so[ʻ']?m|₸/gi,' ').replace(/[-–—:;,|•*]+/g,' ').replace(/\s+/g,' ').trim();
-  out.push({date:y+'-'+pad(mo+1)+'-'+pad(d),amount:Math.round(best*100)/100,type,note,person})}
+  /* все суммы в строке: каждая — отдельная запись; тип берём по слову рядом с суммой */
+  const found=[];for(const n of rest.matchAll(/(\d{1,3}(?:[ . ]\s?\d{3})+(?!\d)|\d+)(?:,(\d{1,2}))?\s*(тыс\.?|т\.р\.?|к|k|т)?(?![\d])/gi)){
+   let v=parseFloat(n[1].replace(/[\s. ]/g,'')+(n[2]?'.'+n[2]:''));if(n[3])v*=1000;if(v>0)found.push({v,i:n.index,s:n[0]})}
+  if(!found.length){out.push({bad:raw,person});continue}
+  const lineType=RX_A.test(ln)?'a':RX_Z.test(ln)?'z':'o';
+  found.forEach((f,k)=>{const from=k?found[k-1].i+found[k-1].s.length:0,to=k<found.length-1?found[k+1].i:rest.length;
+   const seg=rest.slice(from,to);const own=rest.slice(from,f.i+f.s.length)+' '+rest.slice(f.i+f.s.length,to).split(/[+;,]/)[0];
+   const type=RX_A.test(own)?'a':RX_Z.test(own)?'z':found.length===1?lineType:'o';
+   const note=seg.replace(f.s,' ').replace(/числа|число|-?го(?![а-яё])/gi,' ').replace(RX_A,' ').replace(RX_Z,' ').replace(/₽|(?<![а-яё])(?:руб|р|тг|сум)\.?(?![а-яё])|rub|so[ʻ']?m|₸/gi,' ').replace(/(?<![а-яё])г\.?(?![а-яё])/gi,' ').replace(/[-–—:;,.|•*+=()]+/g,' ').replace(/\s+/g,' ').trim();
+   out.push({date:y+'-'+pad(mo+1)+'-'+pad(d),amount:Math.round(f.v*100)/100,type,note,person})})}
  return out}
 function importSheet(){
  open(`<h2>${t('importT')}</h2><div class="muted">${t('importD')}</div>
@@ -668,6 +676,53 @@ function tabForm(l,local){if(!l&&!local)return newTabSheet();
 $('exp').onclick=()=>{const b=new Blob([JSON.stringify(Object.assign({},D,{acct:null,sync:undefined}),null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='money-backup-'+iso(new Date())+'.json';a.click()};
 $('impBtn').onclick=()=>$('imp').click();
 $('imp').onchange=ev=>{const f=ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const o=JSON.parse(r.result);if(!o.incomes||!o.ledgers)throw 0;if(confirm(t('replaceQ'))){const keep={acct:D.acct,sync:D.sync};D=Object.assign(migrate(o),keep);led=D.ledgers[0]&&D.ledgers[0].id;save();applyTheme();applyLang();render()}}catch(e){alert(t('badFile'))}};r.readAsText(f);ev.target.value=''};
+
+/* ===== Excel ===== */
+const XLSX_SRC='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+const toDate=s=>{const[y,m,d]=s.split('-');return new Date(Date.UTC(+y,+m-1,+d))};
+$('xlsxOut').onclick=net(async()=>{await loadJs(XLSX_SRC);if(me())await sync();
+ const H=[t('date'),t('cType'),t('amount'),t('comment')];
+ const my=[...D.incomes].sort((a,b)=>a.date.localeCompare(b.date)).map(x=>[toDate(x.date),tn(x.type),x.amount,x.note||'']);
+ const pay=[];
+ D.ledgers.forEach(l=>[...l.entries].sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>pay.push([l.name,t('kindLocal'),t('sentW'),toDate(x.date),tn(x.type),x.amount,x.note||'',''])));
+ if(me())D.sync.links.forEach(k=>k.entries.map(view).sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>pay.push([oname(k),t('kindShared'),t(x.dir==='in'?'gotW':'sentW'),toDate(x.date),tn(x.type),x.amount,x.note||'',t(x.lk)])));
+ const sum={};const add=(who,x,sign)=>{const k=who+'|'+x.date.slice(0,7);sum[k]=(sum[k]||0)+x.amount*sign};
+ D.incomes.forEach(x=>add(t('tSalary'),x,1));D.ledgers.forEach(l=>l.entries.forEach(x=>add(l.name,x,1)));
+ if(me())D.sync.links.forEach(k=>k.entries.map(view).filter(x=>!x.rejected).forEach(x=>add(oname(k),x,x.dir==='in'?-1:1)));
+ const tot=Object.entries(sum).sort().map(([k,v])=>{const[w,m]=k.split('|');return[w,m,v]});
+ const wb=XLSX.utils.book_new();
+ const sh=(rows,head,widths)=>{const ws=XLSX.utils.aoa_to_sheet([head,...rows],{cellDates:true});ws['!cols']=widths.map(w=>({wch:w}));
+  const r=XLSX.utils.decode_range(ws['!ref']);for(let R=1;R<=r.e.r;R++)for(let C=0;C<=r.e.c;C++){const c=ws[XLSX.utils.encode_cell({r:R,c:C})];if(!c)continue;if(c.t==='d')c.z='dd.mm.yyyy';if(c.t==='n')c.z='#,##0.00 "₽"'}
+  ws['!autofilter']={ref:ws['!ref']};return ws};
+ XLSX.utils.book_append_sheet(wb,sh(my,H,[12,12,14,40]),t('shMy').slice(0,31));
+ XLSX.utils.book_append_sheet(wb,sh(pay,[t('cTab'),t('cKind'),t('cDir'),...H,t('cStatus')],[18,10,12,12,12,14,36,24]),t('shPay').slice(0,31));
+ XLSX.utils.book_append_sheet(wb,sh(tot,[t('cTab'),t('cMonth'),t('cTotal')],[20,10,16]),t('shSum').slice(0,31));
+ XLSX.writeFile(wb,'money-'+iso(new Date())+'.xlsx')});
+$('xlsxIn').onclick=()=>$('xlsxFile').click();
+$('xlsxFile').onchange=net(async ev=>{const f=ev.target.files[0];ev.target.value='';if(!f)return;await loadJs(XLSX_SRC);
+ const wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true});
+ const all={};Object.values(LANGS).forEach(L=>['date','amount','comment','cType','cTab','cKind','cDir'].forEach(k=>{(all[k]=all[k]||new Set()).add((L[k]||'').toLowerCase())}));
+ const typeOf=v=>{v=String(v||'').toLowerCase();for(const k of ['a','z','o'])if(Object.values(LANGS).some(L=>(L[TYPES[k].k]||'').toLowerCase()===v))return k;return RX_A.test(v)?'a':RX_Z.test(v)?'z':'o'};
+ const isShared=v=>Object.values(LANGS).some(L=>(L.kindShared||'').toLowerCase()===String(v||'').toLowerCase());
+ const dstr=v=>{if(v instanceof Date&&!isNaN(v))return v.getFullYear()+'-'+pad(v.getMonth()+1)+'-'+pad(v.getDate());if(typeof v==='number'&&v>20000&&v<80000){const d=new Date(Math.round((v-25569)*864e5));return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())}
+  const r=parseNotes(String(v||'')+' 1')[0];return r&&!r.bad?r.date:null};
+ const num=v=>typeof v==='number'?v:parseFloat(String(v||'').replace(/[^\d,.-]/g,'').replace(/\.(?=\d{3}(\D|$))/g,'').replace(',','.'));
+ let n=0;const textRows=[];
+ wb.SheetNames.forEach((name,si)=>{const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:true,defval:''});if(!rows.length)return;
+  const head=rows[0].map(h=>String(h).trim().toLowerCase());const col=k=>head.findIndex(h=>all[k].has(h));
+  const cD=col('date'),cA=col('amount'),cT=col('cType'),cN=col('comment'),cTab=col('cTab'),cK=col('cKind');
+  if(cD<0||cA<0){rows.forEach(r=>textRows.push(r.join(' ')));return}
+  if(head.length===3&&cTab>=0&&col('date')<0)return;
+  rows.slice(1).forEach(r=>{const date=dstr(r[cD]),amount=num(r[cA]);if(!date||!(amount>0))return;
+   if(cK>=0&&isShared(r[cK]))return;
+   const e={id:uid(),type:cT>=0?typeOf(r[cT]):'o',amount:Math.round(amount*100)/100,date,note:cN>=0?String(r[cN]||'').trim():''};
+   let list=D.incomes;
+   if(cTab>=0&&String(r[cTab]).trim()){const nm=String(r[cTab]).trim();let tab=D.ledgers.find(l=>l.name.toLowerCase()===nm.toLowerCase());if(!tab){tab={id:uid(),name:nm,entries:[]};D.ledgers.push(tab)}list=tab.entries}
+   if(list.some(x=>x.date===e.date&&x.amount===e.amount&&x.type===e.type&&(x.note||'')===e.note))return;
+   list.push(e);n++})});
+ if(!n&&textRows.length){parseNotes(textRows.join('\n')).filter(r=>!r.bad).forEach(r=>{D.incomes.push({id:uid(),type:r.type,amount:r.amount,date:r.date,note:r.note});n++})}
+ if(!n)return alert(t('xlsxNone'));
+ save();render();alert(t('xlsxDone',{n}))});
 
 /* ===== настройки ===== */
 function renderSettings(){
